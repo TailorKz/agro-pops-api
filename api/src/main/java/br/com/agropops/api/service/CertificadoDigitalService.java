@@ -1,51 +1,39 @@
 package br.com.agropops.api.service;
 
 import org.springframework.stereotype.Service;
-import java.io.FileInputStream;
-import java.io.InputStream;
+
+import java.io.ByteArrayInputStream;
 import java.security.KeyStore;
 import java.security.cert.X509Certificate;
+import java.util.Date;
 import java.util.Enumeration;
 
 @Service
 public class CertificadoDigitalService {
 
-    public void testarCertificado(String caminhoArquivo, String senha) {
-        try (InputStream entrada = new FileInputStream(caminhoArquivo)) {
+    public Date extrairValidade(byte[] certificadoPfx, String senha) throws Exception {
 
-            // ormato padrão do certificado A1 no Windows/Brasil
-            KeyStore keyStore = KeyStore.getInstance("PKCS12");
+        // 1. Instancia um "Cofre Digital" no formato padrão do Windows/Serasa (PKCS12)
+        KeyStore keyStore = KeyStore.getInstance("PKCS12");
 
-            // Carrega o arquivo e descriptografa usando a senha
-            keyStore.load(entrada, senha.toCharArray());
-
-            // Varre os "Alias"
-            Enumeration<String> aliases = keyStore.aliases();
-
-            while (aliases.hasMoreElements()) {
-                String alias = aliases.nextElement();
-
-                System.out.println("\n=========================================");
-                System.out.println("Lendo Cofre Digital...");
-                System.out.println("Alias encontrado: " + alias);
-
-                // Verifica se a chave privada atrelada a este alias existe
-                if (keyStore.isKeyEntry(alias)) {
-                    X509Certificate certificado = (X509Certificate) keyStore.getCertificate(alias);
-
-                    System.out.println("Titular do Certificado: " + certificado.getSubjectX500Principal().getName());
-                    System.out.println("Emissor: " + certificado.getIssuerX500Principal().getName());
-                    System.out.println("Válido a partir de: " + certificado.getNotBefore());
-                    System.out.println("Válido até: " + certificado.getNotAfter());
-                    System.out.println("STATUS: Certificado lido com sucesso e pronto para assinar XMLs!");
-                }
-            }
-            System.out.println("=========================================\n");
-
+        // 2. Tenta abrir o ficheiro usando a palavra-passe digitada no React
+        try (ByteArrayInputStream bis = new ByteArrayInputStream(certificadoPfx)) {
+            // Se a senha estiver errada, esta linha "explode" e cai no catch abaixo!
+            keyStore.load(bis, senha.toCharArray());
         } catch (Exception e) {
-            System.err.println("\n[ERRO] Não foi possível ler o certificado.");
-            System.err.println("Motivo: " + e.getMessage());
-            e.printStackTrace();
+            throw new RuntimeException("Palavra-passe incorreta ou ficheiro de certificado inválido.");
         }
+
+        // 3. Procura o certificado lá dentro (geralmente existe apenas um "Alias" por PFX)
+        Enumeration<String> aliases = keyStore.aliases();
+        if (aliases.hasMoreElements()) {
+            String alias = aliases.nextElement();
+
+            // 4. Extrai o certificado e pega a Data Final de Validade (NotAfter)
+            X509Certificate cert = (X509Certificate) keyStore.getCertificate(alias);
+            return cert.getNotAfter();
+        }
+
+        throw new RuntimeException("Nenhum certificado encontrado dentro do ficheiro.");
     }
 }

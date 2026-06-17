@@ -33,12 +33,13 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         // permite a rota /error
-                        .requestMatchers("/api/contadores/registrar", "/api/contadores/login", "/error").permitAll()
+                        .requestMatchers("/api/contadores/registrar", "/api/contadores/login", "/api/produtores/login-mobile", "/error").permitAll()
                         // só tem acesso quem tem o crachá JWT
                         .anyRequest().authenticated()
                 )
                 // Coloca o SecurityFilter na porta de entrada
                 .addFilterBefore(securityFilter, UsernamePasswordAuthenticationFilter.class);
+
 
         return http.build();
     }
