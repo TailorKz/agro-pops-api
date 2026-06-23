@@ -18,6 +18,9 @@ public class NotaFiscal {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(unique = true, length = 44)
+    private String chaveAcesso;
+
     private String numero;
     private LocalDate dataEmissao;
     private String tipo; // "ENTRADA" (Vendas do produtor) ou "SAIDA" (Despesas)

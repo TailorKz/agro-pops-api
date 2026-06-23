@@ -1,6 +1,7 @@
 package br.com.agropops.api.model;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -24,7 +25,7 @@ public class Produtor {
     @JsonIgnore // Protege o ficheiro binário pesado de ser carregado na lista
     private byte[] certificadoPfx;
 
-    @JsonIgnore
+    @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
     private String senhaCertificado;
 
     // Guardará a data em que o certificado expira

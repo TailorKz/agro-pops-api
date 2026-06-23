@@ -5,6 +5,7 @@ import br.com.agropops.api.model.LoginDTO;
 import br.com.agropops.api.repository.ContadorRepository;
 import br.com.agropops.api.security.TokenService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -34,11 +35,19 @@ public class ContadorController {
             return ResponseEntity.badRequest().body("Erro: Este e-mail já está registado.");
         }
 
-        // Transforma a palavra-passe em código BCrypt antes de guardar
-        novoContador.setSenha(passwordEncoder.encode(novoContador.getSenha()));
+        try {
+            // Transforma a palavra-passe em código BCrypt antes de guardar
+            novoContador.setSenha(passwordEncoder.encode(novoContador.getSenha()));
 
-        Contador contadorSalvo = repository.save(novoContador);
-        return ResponseEntity.ok(contadorSalvo);
+            Contador contadorSalvo = repository.save(novoContador);
+            return ResponseEntity.ok(contadorSalvo);
+
+        } catch (DataIntegrityViolationException e) {
+            // A MÁGICA AQUI: O Java agora entende que o PostgreSQL bloqueou por dados repetidos!
+            return ResponseEntity.badRequest().body("Erro: Este CRC ou documento já está cadastrado num outro escritório.");
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().body("Erro interno ao tentar salvar o contador.");
+        }
     }
 
     @PostMapping("/login")
@@ -48,17 +57,11 @@ public class ContadorController {
         if (contadorOpt.isPresent()) {
             Contador contador = contadorOpt.get();
 
-            // Compara a palavra-passe digitada no React com o código Hash da base de dados
             if (passwordEncoder.matches(loginData.getSenha(), contador.getSenha())) {
-
-                // Gera o Crachá JWT
                 String token = tokenService.gerarToken(contador);
-
-                // Devolve o token e os dados do contador (empacotados num objeto JSON)
                 Map<String, Object> resposta = new HashMap<>();
                 resposta.put("token", token);
                 resposta.put("contador", contador);
-
                 return ResponseEntity.ok(resposta);
             } else {
                 return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Palavra-passe incorreta.");

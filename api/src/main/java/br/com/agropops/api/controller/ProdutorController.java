@@ -18,6 +18,9 @@ import java.util.Map;
 import java.util.Date;
 import java.util.List;
 import java.util.Optional;
+import br.com.agropops.api.dto.ProdutorDTO;
+import java.util.stream.Collectors;
+import org.springframework.transaction.annotation.Transactional;
 
 @RestController
 @RequestMapping("/api/produtores")
@@ -26,9 +29,6 @@ public class ProdutorController {
 
     @Autowired
     private CertificadoDigitalService certificadoService;
-
-    @Autowired
-    private MockDataService mockDataService;
 
     @Autowired
     private ProdutorRepository produtorRepository;
@@ -82,7 +82,7 @@ public class ProdutorController {
             // Salva no banco de dados (Railway)
             Produtor salvo = produtorRepository.save(produtor);
 
-            mockDataService.gerarNotasFalsasParaProdutor(salvo);
+            // mockDataService.gerarNotasFalsasParaProdutor(salvo);
 
             // Faltava este retorno de sucesso!
             return ResponseEntity.ok(salvo);
@@ -95,10 +95,21 @@ public class ProdutorController {
 
     // ROTA 2: Listar todos os Produtores do Contador Logado
     @GetMapping("/listar/{contadorId}")
-    @Transactional(readOnly = true) // POSTGRES LER O LOB
-    public ResponseEntity<List<Produtor>> listarPorContador(@PathVariable Long contadorId) {
+    @Transactional(readOnly = true)
+    public ResponseEntity<List<ProdutorDTO>> listarPorContador(@PathVariable Long contadorId) {
         List<Produtor> produtores = produtorRepository.findByContadorId(contadorId);
-        return ResponseEntity.ok(produtores);
+
+        List<ProdutorDTO> listaLeve = produtores.stream().map(p -> {
+            ProdutorDTO dto = new ProdutorDTO();
+            dto.setId(p.getId());
+            dto.setNome(p.getNome());
+            dto.setCpfCnpj(p.getCpfCnpj());
+            dto.setInscricaoEstadual(p.getInscricaoEstadual());
+            dto.setValidadeCertificado(p.getValidadeCertificado());
+            return dto;
+        }).collect(Collectors.toList());
+
+        return ResponseEntity.ok(listaLeve);
     }
 
     // ROTA 3: Login exclusivo do App Mobile (Produtor)

@@ -1,6 +1,7 @@
 package br.com.agropops.api.model;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -26,10 +27,11 @@ public class Contador {
     private String email;
 
     @Column(nullable = false)
-    @JsonIgnore // Impede que a palavra-passe (mesmo encriptada) vá para o Frontend
+    // Apenas permite a ESCRITA (no cadastro), mas proíbe a LEITURA (para o frontend)
+    @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
     private String senha;
 
     @OneToMany(mappedBy = "contador", cascade = CascadeType.ALL)
-    @JsonIgnore // Corta o Loop Infinito pelo lado do contador
+    @JsonIgnore // JsonIgnore continua cortando o loop infinito
     private List<Produtor> produtores;
 }
