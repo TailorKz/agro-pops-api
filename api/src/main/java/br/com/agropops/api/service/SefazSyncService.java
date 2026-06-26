@@ -99,25 +99,38 @@ public class SefazSyncService {
                 // LOTE ENCONTRADO (Sucesso - Documentos baixados)
                 if (retorno.getLote() != null && retorno.getLote().getDocZip() != null) {
                     int notasLidas = 0;
+                    int resumosEncontrados = 0;
+
                     for (NFDistribuicaoDocumentoZip docZip : retorno.getLote().getDocZip()) {
                         try {
                             String xmlDescompactado = WSDistribuicaoNFe.decodeGZipToXml(docZip.getValue());
+
+                            // 1. NOTAS COMPLETAS (Já manifestadas ou estaduais)
                             if (docZip.getSchema().startsWith("procNFe")) {
                                 boolean sucesso = sefazXmlService.sincronizarNotaAutomatica(produtor, xmlDescompactado);
                                 if (sucesso) notasLidas++;
+                            }
+                            // 2. RESUMOS DE NOTAS (Falta Manifestar para a SEFAZ liberar o XML completo)
+                            else if (docZip.getSchema().startsWith("resNFe")) {
+                                resumosEncontrados++;
+                                // Aqui no futuro, criaremos o sefazXmlService.salvarResumo(produtor, xmlDescompactado);
+                                System.out.println("⚠️ RESUMO CAPTURADO: Nota detectada na SEFAZ, mas aguardando Manifestação do Destinatário para baixar o XML completo.");
+                            }
+                            // 3. EVENTOS (Cancelamentos, Cartas de Correção, etc)
+                            else if (docZip.getSchema().startsWith("procEventoNFe")) {
+                                System.out.println("ℹ️ EVENTO CAPTURADO: Carta de Correção ou Cancelamento detectado.");
                             }
                         } catch (Exception ex) {
                             System.out.println("⚠️ Falha ao ler documento ZIP individual: " + ex.getMessage());
                         }
                     }
 
-                    // CORREÇÃO 4: Avança o NSU com sucesso
                     if (retorno.getUltimoNSU() != null && !retorno.getUltimoNSU().isBlank()) {
                         produtor.setUltimoNsu(retorno.getUltimoNSU());
                         System.out.println("🔖 Novo NSU salvo com sucesso: " + retorno.getUltimoNSU());
                     }
                     produtorRepository.save(produtor);
-                    System.out.println("✅ " + notasLidas + " novas notas salvas.");
+                    System.out.println("✅ " + notasLidas + " notas completas e " + resumosEncontrados + " resumos sincronizados.");
 
                 } else {
                     // CSTAT 137 (Sem documentos) OU 656 (Consumo Indevido)
