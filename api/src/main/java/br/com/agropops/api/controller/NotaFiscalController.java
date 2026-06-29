@@ -1,5 +1,6 @@
 package br.com.agropops.api.controller;
 
+import br.com.agropops.api.dto.ItemNotaDTO;
 import br.com.agropops.api.dto.NotaFiscalDTO;
 import br.com.agropops.api.model.NotaFiscal;
 import br.com.agropops.api.repository.NotaFiscalRepository;
@@ -26,39 +27,40 @@ public class NotaFiscalController {
     private br.com.agropops.api.service.SefazXmlService sefazXmlService;
 
     @GetMapping("/listar/{produtorId}")
-    @Transactional(readOnly = true)
-    public ResponseEntity<List<NotaFiscalDTO>> listarPorProdutor(
+    public ResponseEntity<List<NotaFiscalDTO>> listarNotas(
             @PathVariable Long produtorId,
-            @RequestParam(required = false) String inicio, // Recebe a data inicial (opcional)
-            @RequestParam(required = false) String fim     // Recebe a data final (opcional)
-    ) {
-        List<NotaFiscal> notas;
+            @RequestParam(required = false) String inicio,
+            @RequestParam(required = false) String fim) {
 
-        // Se o React enviou as duas datas, o Java filtra pelo período:
-        if (inicio != null && fim != null) {
-            LocalDate dataInicio = LocalDate.parse(inicio);
-            LocalDate dataFim = LocalDate.parse(fim);
-            notas = notaFiscalRepository.findByProdutorIdAndDataEmissaoBetweenOrderByDataEmissaoDesc(produtorId, dataInicio, dataFim);
-        }
-        // Se não enviou data (ex: clicou na aba "Tudo"), o Java traz todo o histórico:
-        else {
-            notas = notaFiscalRepository.findByProdutorIdOrderByDataEmissaoDesc(produtorId);
-        }
+        // Aqui você busca as notas no repositório (depende de como estava o seu código, mantive a lógica padrão)
+        List<NotaFiscal> notas = notaFiscalRepository.findByProdutorId(produtorId);
 
-        // Converte as notas encontradas para o DTO (Leve)
-        List<NotaFiscalDTO> listaLeve = notas.stream().map(n -> {
+        // Converte as entidades para DTO (O empacotamento)
+        List<NotaFiscalDTO> notasDTO = notas.stream().map(nota -> {
             NotaFiscalDTO dto = new NotaFiscalDTO();
-            dto.setId(n.getId());
-            dto.setNumero(n.getNumero());
-            dto.setDataEmissao(n.getDataEmissao());
-            dto.setTipo(n.getTipo());
-            dto.setValor(n.getValor());
-            dto.setIsDedutivel(n.getIsDedutivel());
-            dto.setDescricao(n.getDescricao());
+            dto.setId(nota.getId());
+            dto.setNumero(nota.getNumero());
+            dto.setDataEmissao(nota.getDataEmissao());
+            dto.setTipo(nota.getTipo());
+            dto.setValorTotal(nota.getValorTotal());
+            dto.setEmpresaEnvolvida(nota.getEmpresaEnvolvida());
+
+            // Converte os Itens
+            List<ItemNotaDTO> itensDTO = nota.getItens().stream().map(item -> {
+                ItemNotaDTO itemDTO = new ItemNotaDTO();
+                itemDTO.setId(item.getId());
+                itemDTO.setDescricao(item.getDescricao());
+                itemDTO.setNcm(item.getNcm());
+                itemDTO.setValor(item.getValor());
+                itemDTO.setIsDedutivel(item.getIsDedutivel());
+                return itemDTO;
+            }).collect(Collectors.toList());
+
+            dto.setItens(itensDTO);
             return dto;
         }).collect(Collectors.toList());
 
-        return ResponseEntity.ok(listaLeve);
+        return ResponseEntity.ok(notasDTO);
     }
 
     @PostMapping("/importar/{produtorId}")
@@ -70,5 +72,40 @@ public class NotaFiscalController {
         int importadas = sefazXmlService.importarNotas(produtorId, arquivos);
 
         return ResponseEntity.ok("Sucesso! " + importadas + " novas notas foram importadas.");
+    }
+
+    @Autowired
+    private br.com.agropops.api.service.SefazSyncService sefazSyncService;
+
+    @Autowired
+    private br.com.agropops.api.repository.ProdutorRepository produtorRepository;
+
+    @PostMapping("/manifestar/{produtorId}/{chaveAcesso}")
+    public ResponseEntity<String> manifestarNota(
+            @PathVariable Long produtorId,
+            @PathVariable String chaveAcesso,
+            @RequestParam("tipo") String tipoAcao) { // Ex: "CONFIRMAR" ou "DESCONHECER"
+
+        var produtorOpt = produtorRepository.findById(produtorId);
+        if (produtorOpt.isEmpty()) {
+            return ResponseEntity.badRequest().body("Produtor não encontrado.");
+        }
+
+        // Importe a classe do NFTipoEventoManifestacaoDestinatario no topo do Controller
+        com.fincatto.documentofiscal.nfe400.classes.evento.manifestacaodestinatario.NFTipoEventoManifestacaoDestinatario tipoEvento;
+
+        switch (tipoAcao.toUpperCase()) {
+            case "CONFIRMAR":
+                tipoEvento = com.fincatto.documentofiscal.nfe400.classes.evento.manifestacaodestinatario.NFTipoEventoManifestacaoDestinatario.CONFIRMACAO_DA_OPERACAO;
+                break;
+            case "DESCONHECER":
+                tipoEvento = com.fincatto.documentofiscal.nfe400.classes.evento.manifestacaodestinatario.NFTipoEventoManifestacaoDestinatario.DESCONHECIMENTO_DA_OPERACAO;
+                break;
+            default:
+                return ResponseEntity.badRequest().body("Ação inválida.");
+        }
+
+        String resultado = sefazSyncService.manifestarNotaManualmente(produtorOpt.get(), chaveAcesso, tipoEvento);
+        return ResponseEntity.ok(resultado);
     }
 }

@@ -13,6 +13,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.fincatto.documentofiscal.nfe400.classes.evento.manifestacaodestinatario.NFTipoEventoManifestacaoDestinatario;
 
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
@@ -110,11 +111,32 @@ public class SefazSyncService {
                                 boolean sucesso = sefazXmlService.sincronizarNotaAutomatica(produtor, xmlDescompactado);
                                 if (sucesso) notasLidas++;
                             }
-                            // 2. RESUMOS DE NOTAS (Falta Manifestar para a SEFAZ liberar o XML completo)
+                            // ==========================================================
+                            // 2. RESUMOS DE NOTAS: MANIFESTAÇÃO AUTOMÁTICA (CIÊNCIA)
+                            // ==========================================================
                             else if (docZip.getSchema().startsWith("resNFe")) {
                                 resumosEncontrados++;
-                                // Aqui no futuro, criaremos o sefazXmlService.salvarResumo(produtor, xmlDescompactado);
-                                System.out.println("⚠️ RESUMO CAPTURADO: Nota detectada na SEFAZ, mas aguardando Manifestação do Destinatário para baixar o XML completo.");
+
+                                // Extrai a chave de acesso (44 dígitos) diretamente do XML do Resumo
+                                java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("<chNFe>(.*?)</chNFe>").matcher(xmlDescompactado);
+
+                                if (matcher.find()) {
+                                    String chaveAcesso = matcher.group(1);
+                                    System.out.println("⚠️ RESUMO CAPTURADO: Chave " + chaveAcesso + ". Disparando Ciência da Operação Automática...");
+
+                                    try {
+                                        // Dispara o evento oficial para o Governo Federal
+                                        ws.manifestaDestinatarioNota(
+                                                chaveAcesso,
+                                                NFTipoEventoManifestacaoDestinatario.CIENCIA_DA_EMISSAO,
+                                                "", // Justificativa não é necessária para este evento
+                                                cpfCnpjLimpo
+                                        );
+                                        System.out.println("✅ Ciência da Operação registrada com sucesso na SEFAZ!");
+                                    } catch (Exception ex) {
+                                        System.out.println("❌ Erro ao manifestar automaticamente a nota: " + ex.getMessage());
+                                    }
+                                }
                             }
                             // 3. EVENTOS (Cancelamentos, Cartas de Correção, etc)
                             else if (docZip.getSchema().startsWith("procEventoNFe")) {
@@ -211,5 +233,49 @@ public class SefazSyncService {
                 return "changeit";
             }
         };
+    }
+
+    // =======================================================================
+    // NOVO: Método para o Frontend disparar a Manifestação Final (Confirmação/Desconhecimento)
+    // =======================================================================
+    public String manifestarNotaManualmente(Produtor produtor, String chaveAcesso, com.fincatto.documentofiscal.nfe400.classes.evento.manifestacaodestinatario.NFTipoEventoManifestacaoDestinatario tipoEvento) {
+        try {
+            String cpfCnpjLimpo = produtor.getCpfCnpj().replaceAll("\\D", "");
+            NFeConfig config = criarConfig(produtor);
+            WSFacade ws = new WSFacade(config);
+
+            String justificativa = "";
+            // Se for Operação não Realizada, a SEFAZ exige uma justificativa
+            if (tipoEvento.equals(com.fincatto.documentofiscal.nfe400.classes.evento.manifestacaodestinatario.NFTipoEventoManifestacaoDestinatario.OPERACAO_NAO_REALIZADA)) {
+                justificativa = "Mercadoria nao entregue ou devolvida";
+            }
+
+            // Dispara o evento para a SEFAZ
+            var retorno = ws.manifestaDestinatarioNota(
+                    chaveAcesso,
+                    tipoEvento,
+                    justificativa,
+                    cpfCnpjLimpo
+            );
+
+            // A SEFAZ responde a eventos dentro de uma lista (Lote)
+            if (retorno.getEventoRetorno() != null && !retorno.getEventoRetorno().isEmpty()) {
+                // Pegamos a resposta do nosso evento específico (que é o primeiro e único do lote)
+                var infoRetorno = retorno.getEventoRetorno().get(0).getInfoEventoRetorno();
+
+                // 135 significa "Evento registrado e vinculado a NF-e"
+                if (infoRetorno.getCodigoStatus().equals("135")) {
+                    return "Sucesso: Evento registrado e vinculado a NF-e.";
+                } else {
+                    return "Erro da SEFAZ: " + infoRetorno.getMotivo();
+                }
+            } else {
+                // Caso o lote inteiro tenha sido rejeitado antes de processar o evento
+                return "Erro da SEFAZ: Lote rejeitado - " + retorno.getMotivo();
+            }
+
+        } catch (Exception e) {
+            return "Erro de comunicação: " + e.getMessage();
+        }
     }
 }

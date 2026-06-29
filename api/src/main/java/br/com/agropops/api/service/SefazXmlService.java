@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 import org.w3c.dom.Document;
+import br.com.agropops.api.model.ItemNota;
 
 import javax.xml.parsers.DocumentBuilderFactory;
 import java.io.ByteArrayInputStream;
@@ -31,6 +32,8 @@ public class SefazXmlService {
 
     @Autowired
     private RegraNCMRepository regraRepository;
+
+
 
     // ==============================================================
     // MÉTODO 1: Para o Upload Manual (Vem do React)
@@ -76,6 +79,9 @@ public class SefazXmlService {
     // ==============================================================
     // O CÉREBRO CENTRAL: Extração, Deduplicação e Inteligência NCM
     // ==============================================================
+    // ==============================================================
+    // O CÉREBRO CENTRAL: Extração, Deduplicação e Inteligência NCM
+    // ==============================================================
     private boolean processarESalvarNota(Document doc, Produtor produtor) {
         try {
             String idAtributo = doc.getElementsByTagName("infNFe").item(0).getAttributes().getNamedItem("Id").getNodeValue();
@@ -83,12 +89,11 @@ public class SefazXmlService {
 
             // 1. DEDUPLICAÇÃO
             if (notaRepository.existsByChaveAcesso(chaveAcesso)) {
-                return false; // Aborta e não guarda se a nota já existir
+                return false;
             }
 
-            // 2. EXTRAÇÃO DE DADOS BÁSICOS
+            // 2. EXTRAÇÃO DE DADOS BÁSICOS DA NOTA
             String numero = doc.getElementsByTagName("nNF").item(0).getTextContent();
-
             String dataTexto = doc.getElementsByTagName("dhEmi").getLength() > 0
                     ? doc.getElementsByTagName("dhEmi").item(0).getTextContent()
                     : doc.getElementsByTagName("dEmi").item(0).getTextContent();
@@ -98,42 +103,72 @@ public class SefazXmlService {
             String tipo = tpNF.equals("0") ? "ENTRADA" : "SAIDA";
 
             String valorStr = doc.getElementsByTagName("vNF").item(0).getTextContent();
-            BigDecimal valor = new BigDecimal(valorStr);
+            BigDecimal valorTotal = new BigDecimal(valorStr);
 
-            String descricao = "Diversos";
-            if (doc.getElementsByTagName("xProd").getLength() > 0) {
-                descricao = doc.getElementsByTagName("xProd").item(0).getTextContent();
+            // 3. DESCOBRIR A EMPRESA ENVOLVIDA (Razão Social)
+            String emitenteNome = "Desconhecido";
+            if (doc.getElementsByTagName("emit").getLength() > 0) {
+                org.w3c.dom.Element emit = (org.w3c.dom.Element) doc.getElementsByTagName("emit").item(0);
+                if(emit.getElementsByTagName("xNome").getLength() > 0) emitenteNome = emit.getElementsByTagName("xNome").item(0).getTextContent();
             }
 
-            // 3. INTELIGÊNCIA FISCAL (NCM)
-            String ncm = "N/A";
-            if (doc.getElementsByTagName("NCM").getLength() > 0) {
-                ncm = doc.getElementsByTagName("NCM").item(0).getTextContent();
+            String destinatarioNome = "Desconhecido";
+            if (doc.getElementsByTagName("dest").getLength() > 0) {
+                org.w3c.dom.Element dest = (org.w3c.dom.Element) doc.getElementsByTagName("dest").item(0);
+                if(dest.getElementsByTagName("xNome").getLength() > 0) destinatarioNome = dest.getElementsByTagName("xNome").item(0).getTextContent();
             }
 
-            boolean isDedutivel = false;
-            Long contadorId = produtor.getContador().getId();
-            Optional<RegraNCM> regra = regraRepository.findByNcmAndContadorId(ncm, contadorId);
-            if (regra.isPresent()) {
-                isDedutivel = regra.get().getIsDedutivel();
-            }
+            // Se for despesa (SAIDA), a empresa é quem emitiu. Se for receita (ENTRADA), a empresa é quem comprou (destinatário).
+            String empresaEnvolvida = tipo.equals("SAIDA") ? emitenteNome : destinatarioNome;
 
-            // 4. GUARDA NA BASE DE DADOS
+            // 4. PREPARA A NOTA
             NotaFiscal nota = new NotaFiscal();
             nota.setChaveAcesso(chaveAcesso);
             nota.setNumero(numero);
             nota.setDataEmissao(dataEmissao);
             nota.setTipo(tipo);
-            nota.setValor(valor);
-            nota.setDescricao(descricao);
-            nota.setIsDedutivel(isDedutivel);
+            nota.setValorTotal(valorTotal);
+            nota.setEmpresaEnvolvida(empresaEnvolvida);
             nota.setProdutor(produtor);
 
-            notaRepository.save(nota);
-            return true; // Sucesso!
+            // 5. INTELIGÊNCIA FISCAL: VARRER TODOS OS ITENS
+            org.w3c.dom.NodeList detNodes = doc.getElementsByTagName("det");
+            Long contadorId = produtor.getContador().getId();
 
+            for (int i = 0; i < detNodes.getLength(); i++) {
+                org.w3c.dom.Element det = (org.w3c.dom.Element) detNodes.item(i);
+                org.w3c.dom.Element prod = (org.w3c.dom.Element) det.getElementsByTagName("prod").item(0);
+
+                String nomeProduto = prod.getElementsByTagName("xProd").item(0).getTextContent();
+                String ncmProduto = prod.getElementsByTagName("NCM").item(0).getTextContent();
+                String valorProdutoStr = prod.getElementsByTagName("vProd").item(0).getTextContent();
+                BigDecimal valorProduto = new BigDecimal(valorProdutoStr);
+
+                boolean isDedutivel = false;
+                // O LCDPR só deduz despesas (SAÍDA). Entradas são sempre receitas brutas.
+                if (tipo.equals("SAIDA")) {
+                    Optional<RegraNCM> regra = regraRepository.findByNcmAndContadorId(ncmProduto, contadorId);
+                    if (regra.isPresent()) {
+                        isDedutivel = regra.get().getIsDedutivel();
+                    }
+                }
+
+                ItemNota item = new ItemNota();
+                item.setDescricao(nomeProduto);
+                item.setNcm(ncmProduto);
+                item.setValor(valorProduto);
+                item.setIsDedutivel(isDedutivel);
+                item.setNotaFiscal(nota);
+
+                // Adiciona o item à nota (o Hibernate vai salvar tudo junto!)
+                nota.getItens().add(item);
+            }
+
+            notaRepository.save(nota);
+            return true;
         } catch (Exception e) {
-            return false; // Falhou a leitura deste documento específico
+            System.out.println("⚠️ Erro ao processar XML: " + e.getMessage());
+            return false;
         }
     }
 }

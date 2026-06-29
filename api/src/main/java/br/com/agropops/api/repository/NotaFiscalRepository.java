@@ -11,6 +11,8 @@ public interface NotaFiscalRepository extends JpaRepository<NotaFiscal, Long> {
     // Método antigo (Traz tudo do produtor)
     List<NotaFiscal> findByProdutorIdOrderByDataEmissaoDesc(Long produtorId);
 
+    List<NotaFiscal> findByProdutorId(Long produtorId);
+
     // Filtra as notas por um período de datas
     List<NotaFiscal> findByProdutorIdAndDataEmissaoBetweenOrderByDataEmissaoDesc(Long produtorId, LocalDate dataInicio, LocalDate dataFim);
 

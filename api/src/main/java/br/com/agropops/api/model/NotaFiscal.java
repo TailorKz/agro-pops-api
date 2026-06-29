@@ -7,6 +7,8 @@ import lombok.Setter;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
 
 @Getter
 @Setter
@@ -22,14 +24,21 @@ public class NotaFiscal {
     private String chaveAcesso;
 
     private String numero;
+
     private LocalDate dataEmissao;
-    private String tipo; // "ENTRADA" (Vendas do produtor) ou "SAIDA" (Despesas)
-    private BigDecimal valor;
-    private Boolean isDedutivel; // Crucial para o cálculo do Livro Caixa!
-    private String descricao;
+
+    private String tipo; // "ENTRADA" ou "SAIDA"
+
+    private BigDecimal valorTotal;
+
+    private String empresaEnvolvida; // Razão Social
 
     @ManyToOne
     @JoinColumn(name = "produtor_id", nullable = false)
     @JsonIgnore
     private Produtor produtor;
+
+    // Relação vários itens
+    @OneToMany(mappedBy = "notaFiscal", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<ItemNota> itens = new ArrayList<>();
 }

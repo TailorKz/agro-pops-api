@@ -37,13 +37,12 @@ public class ProdutorController {
     private ContadorRepository contadorRepository;
 
     @PostMapping("/cadastrar")
-    @Transactional // POSTGRES GRAVAR O LOB
     public ResponseEntity<?> cadastrarProdutor(
             @RequestParam("nome") String nome,
             @RequestParam("cpfCnpj") String cpfCnpj,
             @RequestParam("inscricaoEstadual") String inscricaoEstadual,
-            @RequestParam("senhaCertificado") String senhaCertificado,
             @RequestParam("contadorId") Long contadorId,
+            @RequestParam(value = "senhaCertificado", required = false) String senhaCertificado,
             @RequestParam(value = "certificado", required = false) MultipartFile certificado) {
 
         // O bloco TRY principal que o Java exige para lidar com a IOException do getBytes()
@@ -67,7 +66,6 @@ public class ProdutorController {
                 byte[] bytesCertificado = certificado.getBytes(); // Agora o try lá em cima trata isso!
                 produtor.setCertificadoPfx(bytesCertificado);
 
-                // --- NOVA VALIDAÇÃO DO CERTIFICADO ---
                 try {
                     Date validade = certificadoService.extrairValidade(bytesCertificado, senhaCertificado);
                     produtor.setValidadeCertificado(validade);
@@ -76,7 +74,6 @@ public class ProdutorController {
                     // Bloqueia o registo e avisa o ecrã do React que a senha está errada!
                     return ResponseEntity.badRequest().body(e.getMessage());
                 }
-                // --------------------------------------
             }
 
             // Salva no banco de dados (Railway)
