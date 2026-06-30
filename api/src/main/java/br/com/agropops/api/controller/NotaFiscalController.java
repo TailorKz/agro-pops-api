@@ -9,6 +9,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -26,16 +27,20 @@ public class NotaFiscalController {
     @Autowired
     private br.com.agropops.api.service.SefazXmlService sefazXmlService;
 
+
+    @Transactional(readOnly = true)
     @GetMapping("/listar/{produtorId}")
     public ResponseEntity<List<NotaFiscalDTO>> listarNotas(
             @PathVariable Long produtorId,
             @RequestParam(required = false) String inicio,
             @RequestParam(required = false) String fim) {
 
-        // Aqui você busca as notas no repositório (depende de como estava o seu código, mantive a lógica padrão)
+
+        // busca as notas no repositório
         List<NotaFiscal> notas = notaFiscalRepository.findByProdutorId(produtorId);
 
-        // Converte as entidades para DTO (O empacotamento)
+
+        // Converte as entidades para DTO
         List<NotaFiscalDTO> notasDTO = notas.stream().map(nota -> {
             NotaFiscalDTO dto = new NotaFiscalDTO();
             dto.setId(nota.getId());
@@ -91,7 +96,6 @@ public class NotaFiscalController {
             return ResponseEntity.badRequest().body("Produtor não encontrado.");
         }
 
-        // Importe a classe do NFTipoEventoManifestacaoDestinatario no topo do Controller
         com.fincatto.documentofiscal.nfe400.classes.evento.manifestacaodestinatario.NFTipoEventoManifestacaoDestinatario tipoEvento;
 
         switch (tipoAcao.toUpperCase()) {

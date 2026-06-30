@@ -43,7 +43,6 @@ public class ContadorController {
             return ResponseEntity.ok(contadorSalvo);
 
         } catch (DataIntegrityViolationException e) {
-            // A MÁGICA AQUI: O Java agora entende que o PostgreSQL bloqueou por dados repetidos!
             return ResponseEntity.badRequest().body("Erro: Este CRC ou documento já está cadastrado num outro escritório.");
         } catch (Exception e) {
             return ResponseEntity.internalServerError().body("Erro interno ao tentar salvar o contador.");
