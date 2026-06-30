@@ -36,16 +36,8 @@ public class Contador {
     @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
     private String senha;
 
-    @OneToMany(mappedBy = "contador", cascade = CascadeType.ALL)
-    @JsonIgnore // JsonIgnore continua cortando o loop infinito
-    private List<Produtor> produtores;
-
-    //    // Protege a senha
-    @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
-    private String senha;
-
-    // Impede o Java de tentar ler a lista de produtores na hora do Login (Evita o Erro 500)
     @JsonIgnore
     @OneToMany(mappedBy = "contador", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<Produtor> produtores = new ArrayList<>();
+
 }
