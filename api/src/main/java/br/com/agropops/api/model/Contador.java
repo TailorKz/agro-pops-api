@@ -5,7 +5,12 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
+
+import java.util.ArrayList;
 import java.util.List;
+
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 
 @Getter
 @Setter
@@ -34,4 +39,13 @@ public class Contador {
     @OneToMany(mappedBy = "contador", cascade = CascadeType.ALL)
     @JsonIgnore // JsonIgnore continua cortando o loop infinito
     private List<Produtor> produtores;
+
+    //    // Protege a senha
+    @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
+    private String senha;
+
+    // Impede o Java de tentar ler a lista de produtores na hora do Login (Evita o Erro 500)
+    @JsonIgnore
+    @OneToMany(mappedBy = "contador", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<Produtor> produtores = new ArrayList<>();
 }
