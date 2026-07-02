@@ -13,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @RestController
@@ -37,7 +38,7 @@ public class NotaFiscalController {
 
 
         // busca as notas no repositório
-        List<NotaFiscal> notas = notaFiscalRepository.findByProdutorId(produtorId);
+        List<NotaFiscal> notas = notaFiscalRepository.findByProdutorIdOrderByDataEmissaoDesc(produtorId);
 
 
         // Converte as entidades para DTO
@@ -111,5 +112,29 @@ public class NotaFiscalController {
 
         String resultado = sefazSyncService.manifestarNotaManualmente(produtorOpt.get(), chaveAcesso, tipoEvento);
         return ResponseEntity.ok(resultado);
+    }
+    @PutMapping("/atualizar-itens/{notaId}")
+    @Transactional
+    public ResponseEntity<?> atualizarItensDaNota(@PathVariable Long notaId, @RequestBody List<ItemNotaDTO> itensAtualizados) {
+        Optional<NotaFiscal> notaOpt = notaFiscalRepository.findById(notaId);
+        if (notaOpt.isPresent()) {
+            NotaFiscal nota = notaOpt.get();
+            for (ItemNotaDTO dto : itensAtualizados) {
+                nota.getItens().stream()
+                        .filter(item -> item.getId().equals(dto.getId()))
+                        .findFirst()
+                        .ifPresent(item -> item.setIsDedutivel(dto.getIsDedutivel()));
+            }
+            notaFiscalRepository.save(nota);
+            return ResponseEntity.ok("Itens salvos com sucesso!");
+        }
+        return ResponseEntity.notFound().build();
+    }
+
+    @DeleteMapping("/deletar/{id}")
+    @Transactional
+    public ResponseEntity<?> deletarNota(@PathVariable Long id) {
+        notaFiscalRepository.deleteById(id);
+        return ResponseEntity.ok("Nota excluída com sucesso.");
     }
 }

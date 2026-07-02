@@ -2,20 +2,21 @@ package br.com.agropops.api.repository;
 
 import br.com.agropops.api.model.NotaFiscal;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDate;
 import java.util.List;
 
 public interface NotaFiscalRepository extends JpaRepository<NotaFiscal, Long> {
 
-    // Método antigo (Traz tudo do produtor)
-    List<NotaFiscal> findByProdutorIdOrderByDataEmissaoDesc(Long produtorId);
+    // 'JOIN FETCH' traz a nota e os itens em apenas 1 viagem
+    @Query("SELECT DISTINCT n FROM NotaFiscal n LEFT JOIN FETCH n.itens WHERE n.produtor.id = :produtorId ORDER BY n.dataEmissao DESC")
+    List<NotaFiscal> findByProdutorIdOrderByDataEmissaoDesc(@Param("produtorId") Long produtorId);
 
     List<NotaFiscal> findByProdutorId(Long produtorId);
 
-    // Filtra as notas por um período de datas
     List<NotaFiscal> findByProdutorIdAndDataEmissaoBetweenOrderByDataEmissaoDesc(Long produtorId, LocalDate dataInicio, LocalDate dataFim);
 
-    // Verifica se a nota já existe na base de dados pela Chave de 44 dígitos
     boolean existsByChaveAcesso(String chaveAcesso);
 }

@@ -3,6 +3,7 @@ package br.com.agropops.api.controller;
 import br.com.agropops.api.model.Contador;
 import br.com.agropops.api.model.RegraNCM;
 import br.com.agropops.api.repository.ContadorRepository;
+import br.com.agropops.api.repository.ItemNotaRepository;
 import br.com.agropops.api.repository.RegraNCMRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -28,6 +29,9 @@ public class RegraNCMController {
         return ResponseEntity.ok(regraRepository.findByContadorId(contadorId));
     }
 
+    @Autowired
+    private ItemNotaRepository itemNotaRepository;
+
     // ADICIONAR REGRA
     @PostMapping("/cadastrar/{contadorId}")
     public ResponseEntity<?> adicionarRegra(@PathVariable Long contadorId, @RequestBody RegraNCM novaRegra) {
@@ -43,6 +47,7 @@ public class RegraNCMController {
 
         novaRegra.setContador(contadorOpt.get());
         RegraNCM regraSalva = regraRepository.save(novaRegra);
+        itemNotaRepository.aplicarRegraRetroativa(novaRegra.getNcm(), novaRegra.getIsDedutivel(), contadorId);
         return ResponseEntity.ok(regraSalva);
     }
 
@@ -70,6 +75,7 @@ public class RegraNCMController {
         regra.setIsDedutivel(regraAtualizada.getIsDedutivel());
 
         regraRepository.save(regra);
+        itemNotaRepository.aplicarRegraRetroativa(regra.getNcm(), regra.getIsDedutivel(), regra.getContador().getId());
         return ResponseEntity.ok("Regra atualizada com sucesso.");
     }
 }
