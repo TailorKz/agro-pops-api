@@ -1,5 +1,6 @@
 package br.com.agropops.api.service;
 
+import br.com.agropops.api.model.ItemNota;
 import br.com.agropops.api.model.NotaFiscal;
 import br.com.agropops.api.model.Produtor;
 import br.com.agropops.api.model.RegraNCM;
@@ -11,15 +12,17 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 import org.w3c.dom.Document;
-import br.com.agropops.api.model.ItemNota;
 
 import javax.xml.parsers.DocumentBuilderFactory;
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 public class SefazXmlService {
@@ -33,66 +36,81 @@ public class SefazXmlService {
     @Autowired
     private RegraNCMRepository regraRepository;
 
-
-
-    // ==============================================================
-    // MÉTODO 1: Para o Upload Manual (Vem do React)
-    // ==============================================================
+    // MÉTODO 1: Upload Manual pelo React (Otimizado com Lotes e RAM)
     @Transactional
     public int importarNotas(Long produtorId, List<MultipartFile> arquivos) {
         Produtor produtor = produtorRepository.findById(produtorId).orElseThrow();
-        int notasImportadas = 0;
+
+        // Evita N+1 no NCM
+        List<RegraNCM> regras = regraRepository.findByContadorId(produtor.getContador().getId());
+        Map<String, Boolean> mapaRegras = regras.stream()
+                .collect(Collectors.toMap(RegraNCM::getNcm, RegraNCM::getIsDedutivel, (r1, r2) -> r1));
+
+        // CARREGAR CHAVES EXISTENTES PARA A RAM - elimina o Auto-Flush do Hibernate
+        Set<String> chavesExistentes = notaRepository.findChavesAcessoByProdutorId(produtorId);
+
+        // LISTA DE ESPERA
+        List<NotaFiscal> notasParaSalvar = new ArrayList<>();
 
         for (MultipartFile arquivo : arquivos) {
             try {
-                // Abre o ficheiro recebido pelo navegador
                 Document doc = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(arquivo.getInputStream());
+                NotaFiscal notaProcessada = processarNotaNaMemoria(doc, produtor, mapaRegras, chavesExistentes);
 
-                // Manda para o cérebro processar
-                boolean sucesso = processarESalvarNota(doc, produtor);
-                if (sucesso) notasImportadas++;
+                if (notaProcessada != null) {
+                    notasParaSalvar.add(notaProcessada);
+                    chavesExistentes.add(notaProcessada.getChaveAcesso()); // Atualiza RAM para evitar duplicados no lote
+                }
             } catch (Exception e) {
-                System.out.println("❌ Ficheiro ignorado (Inválido): " + arquivo.getOriginalFilename());
+                System.out.println("Ficheiro ignorado (Inválido): " + arquivo.getOriginalFilename());
             }
         }
-        return notasImportadas;
-    }
 
-    // ==============================================================
-    // MÉTODO 2: Para o Robô Automático (Virá da SEFAZ)
-    // ==============================================================
+        if (!notasParaSalvar.isEmpty()) {
+            notaRepository.saveAll(notasParaSalvar);
+        }
+
+        return notasParaSalvar.size();
+    }
+    // MÉTODO 2: Robô Automático=
     @Transactional
     public boolean sincronizarNotaAutomatica(Produtor produtor, String xmlContent) {
         try {
-            // Transforma o texto puro num ficheiro de memória e abre
+            // Carrega regras e chaves para a RAM para a nota do Robô
+            List<RegraNCM> regras = regraRepository.findByContadorId(produtor.getContador().getId());
+            Map<String, Boolean> mapaRegras = regras.stream()
+                    .collect(Collectors.toMap(RegraNCM::getNcm, RegraNCM::getIsDedutivel, (r1, r2) -> r1));
+
+            Set<String> chavesExistentes = notaRepository.findChavesAcessoByProdutorId(produtor.getId());
+
             InputStream targetStream = new ByteArrayInputStream(xmlContent.getBytes());
             Document doc = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(targetStream);
 
-            // Manda para o MESMO cérebro processar!
-            return processarESalvarNota(doc, produtor);
+            NotaFiscal notaProcessada = processarNotaNaMemoria(doc, produtor, mapaRegras, chavesExistentes);
+
+            // Robô processa uma a uma, então o save() direto faz sentido aqui
+            if (notaProcessada != null) {
+                notaRepository.save(notaProcessada);
+                return true;
+            }
+            return false;
         } catch (Exception e) {
-            System.out.println("❌ Falha ao ler XML automático: " + e.getMessage());
+            System.out.println("Falha ao ler XML automático: " + e.getMessage());
             return false;
         }
     }
 
-    // ==============================================================
-    // O CÉREBRO CENTRAL: Extração, Deduplicação e Inteligência NCM
-    // ==============================================================
-    // ==============================================================
-    // O CÉREBRO CENTRAL: Extração, Deduplicação e Inteligência NCM
-    // ==============================================================
-    private boolean processarESalvarNota(Document doc, Produtor produtor) {
+    // rocessamento em Memória
+    private NotaFiscal processarNotaNaMemoria(Document doc, Produtor produtor, Map<String, Boolean> mapaRegras, Set<String> chavesExistentes) {
         try {
             String idAtributo = doc.getElementsByTagName("infNFe").item(0).getAttributes().getNamedItem("Id").getNodeValue();
             String chaveAcesso = idAtributo.replace("NFe", "");
 
-            // 1. DEDUPLICAÇÃO
-            if (notaRepository.existsByChaveAcesso(chaveAcesso)) {
-                return false;
+            // Deduplicação Instantânea em RAM
+            if (chavesExistentes.contains(chaveAcesso)) {
+                return null;
             }
 
-            // 2. EXTRAÇÃO DE DADOS BÁSICOS DA NOTA
             String numero = doc.getElementsByTagName("nNF").item(0).getTextContent();
             String dataTexto = doc.getElementsByTagName("dhEmi").getLength() > 0
                     ? doc.getElementsByTagName("dhEmi").item(0).getTextContent()
@@ -105,7 +123,6 @@ public class SefazXmlService {
             String valorStr = doc.getElementsByTagName("vNF").item(0).getTextContent();
             BigDecimal valorTotal = new BigDecimal(valorStr);
 
-            // 3. DESCOBRIR A EMPRESA ENVOLVIDA (Razão Social)
             String emitenteNome = "Desconhecido";
             if (doc.getElementsByTagName("emit").getLength() > 0) {
                 org.w3c.dom.Element emit = (org.w3c.dom.Element) doc.getElementsByTagName("emit").item(0);
@@ -118,10 +135,8 @@ public class SefazXmlService {
                 if(dest.getElementsByTagName("xNome").getLength() > 0) destinatarioNome = dest.getElementsByTagName("xNome").item(0).getTextContent();
             }
 
-            // Se for despesa (SAIDA), a empresa é quem emitiu. Se for receita (ENTRADA), a empresa é quem comprou (destinatário).
             String empresaEnvolvida = tipo.equals("SAIDA") ? emitenteNome : destinatarioNome;
 
-            // 4. PREPARA A NOTA
             NotaFiscal nota = new NotaFiscal();
             nota.setChaveAcesso(chaveAcesso);
             nota.setNumero(numero);
@@ -131,9 +146,7 @@ public class SefazXmlService {
             nota.setEmpresaEnvolvida(empresaEnvolvida);
             nota.setProdutor(produtor);
 
-            // 5. INTELIGÊNCIA FISCAL: VARRER TODOS OS ITENS
             org.w3c.dom.NodeList detNodes = doc.getElementsByTagName("det");
-            Long contadorId = produtor.getContador().getId();
 
             for (int i = 0; i < detNodes.getLength(); i++) {
                 org.w3c.dom.Element det = (org.w3c.dom.Element) detNodes.item(i);
@@ -144,14 +157,8 @@ public class SefazXmlService {
                 String valorProdutoStr = prod.getElementsByTagName("vProd").item(0).getTextContent();
                 BigDecimal valorProduto = new BigDecimal(valorProdutoStr);
 
-                boolean isDedutivel = false;
-                // O LCDPR só deduz despesas (SAÍDA). Entradas são sempre receitas brutas.
-                if (tipo.equals("SAIDA")) {
-                    Optional<RegraNCM> regra = regraRepository.findByNcmAndContadorId(ncmProduto, contadorId);
-                    if (regra.isPresent()) {
-                        isDedutivel = regra.get().getIsDedutivel();
-                    }
-                }
+                // Consulta a Memória (RAM) ao invés do Banco de Dados
+                boolean isDedutivel = tipo.equals("SAIDA") && mapaRegras.getOrDefault(ncmProduto, false);
 
                 ItemNota item = new ItemNota();
                 item.setDescricao(nomeProduto);
@@ -160,15 +167,13 @@ public class SefazXmlService {
                 item.setIsDedutivel(isDedutivel);
                 item.setNotaFiscal(nota);
 
-                // Adiciona o item à nota (o Hibernate vai salvar tudo junto!)
                 nota.getItens().add(item);
             }
 
-            notaRepository.save(nota);
-            return true;
+            return nota;
+
         } catch (Exception e) {
-            System.out.println("⚠️ Erro ao processar XML: " + e.getMessage());
-            return false;
+            return null;
         }
     }
 }

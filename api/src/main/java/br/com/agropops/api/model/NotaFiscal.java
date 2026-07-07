@@ -17,7 +17,8 @@ import java.util.List;
 public class NotaFiscal {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "nota_seq")
+    @SequenceGenerator(name = "nota_seq", sequenceName = "nota_seq", allocationSize = 50)
     private Long id;
 
     @Column(unique = true, length = 44)

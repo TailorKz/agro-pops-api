@@ -14,7 +14,8 @@ import java.math.BigDecimal;
 public class ItemNota {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "item_seq")
+    @SequenceGenerator(name = "item_seq", sequenceName = "item_seq", allocationSize = 50)
     private Long id;
 
     private String descricao;
@@ -23,7 +24,7 @@ public class ItemNota {
 
     private BigDecimal valor;
 
-    private Boolean isDedutivel; // O controle agora é individual por item!
+    private Boolean isDedutivel; // O controle individual por item
 
     @ManyToOne
     @JoinColumn(name = "nota_fiscal_id", nullable = false)

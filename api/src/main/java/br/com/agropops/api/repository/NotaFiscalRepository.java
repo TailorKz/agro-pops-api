@@ -19,4 +19,7 @@ public interface NotaFiscalRepository extends JpaRepository<NotaFiscal, Long> {
     List<NotaFiscal> findByProdutorIdAndDataEmissaoBetweenOrderByDataEmissaoDesc(Long produtorId, LocalDate dataInicio, LocalDate dataFim);
 
     boolean existsByChaveAcesso(String chaveAcesso);
+
+    @Query("SELECT n.chaveAcesso FROM NotaFiscal n WHERE n.produtor.id = :produtorId")
+    java.util.Set<String> findChavesAcessoByProdutorId(@Param("produtorId") Long produtorId);
 }

@@ -111,9 +111,7 @@ public class SefazSyncService {
                                 boolean sucesso = sefazXmlService.sincronizarNotaAutomatica(produtor, xmlDescompactado);
                                 if (sucesso) notasLidas++;
                             }
-                            // ==========================================================
-                            // 2. RESUMOS DE NOTAS: MANIFESTAÇÃO AUTOMÁTICA (CIÊNCIA)
-                            // ==========================================================
+                            // 2. RESUMOS DE NOTAS: MANIFESTAÇÃO AUTOMÁTICA
                             else if (docZip.getSchema().startsWith("resNFe")) {
                                 resumosEncontrados++;
 
@@ -163,9 +161,7 @@ public class SefazSyncService {
                         System.out.println("⛔ Consumo Indevido detectado para " + produtor.getNome() + ". Próxima tentativa liberada em 1 hora.");
                     }
 
-                    // =========================================================
-                    // CORREÇÃO 6: A Obra-Prima. Avançar o NSU mesmo sem documentos!
-                    // =========================================================
+                    // CORREÇÃO 6: Avançar o NSU mesmo sem documentos!
                     if (retorno.getUltimoNSU() != null && !retorno.getUltimoNSU().isBlank()) {
                         // Só avança se o NSU devolvido for diferente do que enviamos
                         if (!retorno.getUltimoNSU().equals(ultimoNsu)) {

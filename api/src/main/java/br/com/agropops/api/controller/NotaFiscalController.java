@@ -137,4 +137,28 @@ public class NotaFiscalController {
         notaFiscalRepository.deleteById(id);
         return ResponseEntity.ok("Nota excluída com sucesso.");
     }
+
+    @DeleteMapping("/deletar-todas/{produtorId}")
+    @Transactional
+    public ResponseEntity<?> deletarNotasDoProdutor(
+            @PathVariable Long produtorId,
+            @RequestParam(required = false) LocalDate inicio,
+            @RequestParam(required = false) LocalDate fim) {
+
+        List<NotaFiscal> notas;
+
+        if (inicio != null && fim != null) {
+            notas = notaFiscalRepository.findByProdutorIdAndDataEmissaoBetweenOrderByDataEmissaoDesc(produtorId, inicio, fim);
+        } else {
+            // Se não veio data, apaga TUDO
+            notas = notaFiscalRepository.findByProdutorId(produtorId);
+        }
+
+        if (notas.isEmpty()) {
+            return ResponseEntity.ok("Não há notas para excluir neste período.");
+        }
+
+        notaFiscalRepository.deleteAll(notas);
+        return ResponseEntity.ok(notas.size() + " notas foram apagadas com sucesso.");
+    }
 }
