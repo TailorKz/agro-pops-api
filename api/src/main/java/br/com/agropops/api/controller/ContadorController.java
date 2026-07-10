@@ -1,7 +1,7 @@
 package br.com.agropops.api.controller;
 
 import br.com.agropops.api.model.Contador;
-import br.com.agropops.api.model.LoginDTO;
+import br.com.agropops.api.dto.LoginDTO;
 import br.com.agropops.api.repository.ContadorRepository;
 import br.com.agropops.api.security.TokenService;
 import org.springframework.beans.factory.annotation.Autowired;

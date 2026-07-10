@@ -1,4 +1,4 @@
-package br.com.agropops.api.model;
+package br.com.agropops.api.dto;
 
 import lombok.Data;
 
