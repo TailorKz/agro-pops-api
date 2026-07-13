@@ -2,6 +2,7 @@ package br.com.agropops.api.controller;
 
 import br.com.agropops.api.dto.LancamentoDTO;
 import br.com.agropops.api.dto.LancamentoAvulsoForm;
+import br.com.agropops.api.dto.TotaisLivroCaixaDTO;
 import br.com.agropops.api.model.LancamentoAvulso;
 import br.com.agropops.api.model.Produtor;
 import br.com.agropops.api.repository.LancamentoAvulsoRepository;
@@ -14,7 +15,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
-@RequestMapping("/livro-caixa")
+@RequestMapping("/api/livro-caixa")
 public class LivroCaixaController {
 
     @Autowired
@@ -26,6 +27,7 @@ public class LivroCaixaController {
     @Autowired
     private ProdutorRepository produtorRepository;
 
+    // 1. Endpoint que busca a listagem do Livro Caixa (A tela de Planilha)
     @GetMapping("/{produtorId}")
     public ResponseEntity<List<LancamentoDTO>> getLivroCaixa(
             @PathVariable Long produtorId,
@@ -34,6 +36,7 @@ public class LivroCaixaController {
         return ResponseEntity.ok(lancamentos);
     }
 
+    // 2. Endpoint que cadastra um Lançamento Avulso (Manual)
     @PostMapping("/{produtorId}/avulso")
     public ResponseEntity<String> cadastrarLancamentoAvulso(
             @PathVariable Long produtorId,
@@ -50,12 +53,21 @@ public class LivroCaixaController {
         avulso.setHistorico(form.historico());
         avulso.setTipo(form.tipo());
         avulso.setValor(form.valor());
-        // Segurança: Se for ENTRADA, nunca é dedutível do imposto
         avulso.setIsDedutivel(!form.tipo().equals("ENTRADA") && form.isDedutivel());
         avulso.setProdutor(produtor);
 
         avulsoRepository.save(avulso);
 
         return ResponseEntity.ok("Lançamento avulso registrado com sucesso no Livro Caixa.");
+    }
+
+    // 3. O NOVO ENDPOINT: Agregação rápida para o Simulador IRPF
+    @GetMapping("/{produtorId}/totais")
+    public ResponseEntity<TotaisLivroCaixaDTO> getTotaisLivroCaixa(
+            @PathVariable Long produtorId,
+            @RequestParam int ano) {
+
+        TotaisLivroCaixaDTO totais = livroCaixaService.calcularTotais(produtorId, ano);
+        return ResponseEntity.ok(totais);
     }
 }
