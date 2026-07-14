@@ -32,9 +32,13 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                        // permite a rota /error
-                        .requestMatchers("/api/contadores/registrar", "/api/contadores/login", "/api/produtores/login-mobile", "/error").permitAll()
-                        // só tem acesso quem tem o crachá JWT
+                        // Rotas públicas (Login de todos os níveis e criação de contas)
+                        .requestMatchers("/api/contadores/registrar",
+                                "/api/contadores/login",
+                                "/api/produtores/login-mobile",
+                                "/api/admins/login",
+                                "/error").permitAll()
+                        // Qualquer outra requisição exige o token JWT
                         .anyRequest().authenticated()
                 )
                 // Coloca o SecurityFilter na porta de entrada

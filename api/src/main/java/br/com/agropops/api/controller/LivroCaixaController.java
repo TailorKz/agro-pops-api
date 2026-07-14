@@ -27,7 +27,7 @@ public class LivroCaixaController {
     @Autowired
     private ProdutorRepository produtorRepository;
 
-    // 1. Endpoint que busca a listagem do Livro Caixa (A tela de Planilha)
+    // 1. busca a listagem do Livro Caixa
     @GetMapping("/{produtorId}")
     public ResponseEntity<List<LancamentoDTO>> getLivroCaixa(
             @PathVariable Long produtorId,
@@ -36,7 +36,7 @@ public class LivroCaixaController {
         return ResponseEntity.ok(lancamentos);
     }
 
-    // 2. Endpoint que cadastra um Lançamento Avulso (Manual)
+    // 2. cadastra um Lançamento manual
     @PostMapping("/{produtorId}/avulso")
     public ResponseEntity<String> cadastrarLancamentoAvulso(
             @PathVariable Long produtorId,
@@ -61,7 +61,7 @@ public class LivroCaixaController {
         return ResponseEntity.ok("Lançamento avulso registrado com sucesso no Livro Caixa.");
     }
 
-    // 3. O NOVO ENDPOINT: Agregação rápida para o Simulador IRPF
+    //  3. Agregação rápida para o Simulador IRPF
     @GetMapping("/{produtorId}/totais")
     public ResponseEntity<TotaisLivroCaixaDTO> getTotaisLivroCaixa(
             @PathVariable Long produtorId,
@@ -69,5 +69,15 @@ public class LivroCaixaController {
 
         TotaisLivroCaixaDTO totais = livroCaixaService.calcularTotais(produtorId, ano);
         return ResponseEntity.ok(totais);
+    }
+
+    // 4. deletar APENAS Lançamentos Avulsos
+    @DeleteMapping("/avulso/{id}")
+    public ResponseEntity<String> deletarLancamentoAvulso(@PathVariable Long id) {
+        if (!avulsoRepository.existsById(id)) {
+            return ResponseEntity.notFound().build();
+        }
+        avulsoRepository.deleteById(id);
+        return ResponseEntity.ok("Lançamento avulso removido com sucesso.");
     }
 }

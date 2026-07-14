@@ -39,4 +39,7 @@ public interface NotaFiscalRepository extends JpaRepository<NotaFiscal, Long> {
     // Soma Apenas os Itens Dedutíveis das Notas de Saída
     @Query("SELECT COALESCE(SUM(i.valor), 0) FROM ItemNota i JOIN i.notaFiscal n WHERE n.produtor.id = :produtorId AND EXTRACT(YEAR FROM n.dataEmissao) = :ano AND n.tipo = 'SAIDA' AND i.isDedutivel = true")
     BigDecimal sumDespesasDedutiveisNfeByProdutorAndAno(@Param("produtorId") Long produtorId, @Param("ano") int ano);
+
+    @Query("SELECT n FROM NotaFiscal n WHERE n.produtor.id = :produtorId AND n.dataEmissao >= :inicio AND n.dataEmissao <= :fim ORDER BY n.dataEmissao DESC")
+    List<NotaFiscal> findByProdutorAndDataEmissaoBetween(@Param("produtorId") Long produtorId, @Param("inicio") LocalDate inicio, @Param("fim") LocalDate fim);
 }

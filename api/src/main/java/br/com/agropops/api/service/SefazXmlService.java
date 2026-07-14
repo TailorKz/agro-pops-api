@@ -135,6 +135,12 @@ public class SefazXmlService {
             NotaFiscal nota = new NotaFiscal();
             nota.setChaveAcesso(chaveAcesso);
             nota.setNumero(numero);
+            // CAPTURA DE CONTRA-NOTA (DEVOLUÇÃO)
+            String chaveAcessoReferencia = null;
+            if (doc.getElementsByTagName("refNFe").getLength() > 0) {
+                chaveAcessoReferencia = doc.getElementsByTagName("refNFe").item(0).getTextContent();
+            }
+            nota.setChaveAcessoReferencia(chaveAcessoReferencia);
             nota.setDataEmissao(dataEmissao);
             nota.setTipo(tipo);
             nota.setEmpresaEnvolvida(empresaEnvolvida);

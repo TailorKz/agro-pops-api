@@ -40,30 +40,29 @@ public class ProdutorController {
     public ResponseEntity<?> cadastrarProdutor(
             @RequestParam("nome") String nome,
             @RequestParam("cpfCnpj") String cpfCnpj,
+            @RequestParam(value = "cnpj", required = false) String cnpj, // <-- NOVO PARÂMETRO
             @RequestParam("inscricaoEstadual") String inscricaoEstadual,
             @RequestParam("contadorId") Long contadorId,
             @RequestParam(value = "senhaCertificado", required = false) String senhaCertificado,
             @RequestParam(value = "certificado", required = false) MultipartFile certificado) {
 
-        // O bloco TRY principal que o Java exige para lidar com a IOException do getBytes()
         try {
-            // Encontra o Contador dono deste produtor
             Optional<Contador> contadorOpt = contadorRepository.findById(contadorId);
             if (contadorOpt.isEmpty()) {
                 return ResponseEntity.badRequest().body("Erro: Contador não encontrado.");
             }
 
-            // Preenche os dados do Produtor
             Produtor produtor = new Produtor();
             produtor.setNome(nome);
             produtor.setCpfCnpj(cpfCnpj);
+            produtor.setCnpj(cnpj); // <-- SALVANDO O CNPJ
             produtor.setInscricaoEstadual(inscricaoEstadual);
             produtor.setSenhaCertificado(senhaCertificado);
             produtor.setContador(contadorOpt.get());
 
             // Transforma o ficheiro .pfx numa matriz de bytes e guarda no objeto
             if (certificado != null && !certificado.isEmpty()) {
-                byte[] bytesCertificado = certificado.getBytes(); // Agora o try lá em cima trata isso!
+                byte[] bytesCertificado = certificado.getBytes();
                 produtor.setCertificadoPfx(bytesCertificado);
 
                 try {
@@ -71,41 +70,38 @@ public class ProdutorController {
                     produtor.setValidadeCertificado(validade);
                     System.out.println("✅ Certificado válido! Expira em: " + validade);
                 } catch (Exception e) {
-                    // Bloqueia o registo e avisa o ecrã do React que a senha está errada!
+                    // Bloqueia o registo e avisa o ecrã do React que a senha está errada
                     return ResponseEntity.badRequest().body(e.getMessage());
                 }
             }
 
-            // Salva no banco de dados (Railway)
+            // Salva no banco de dados
             Produtor salvo = produtorRepository.save(produtor);
 
             // mockDataService.gerarNotasFalsasParaProdutor(salvo);
 
-            // Faltava este retorno de sucesso!
             return ResponseEntity.ok(salvo);
 
         } catch (Exception e) {
-            // Faltava fechar o catch principal que captura a IOException do getBytes()
             return ResponseEntity.internalServerError().body("Erro interno ao processar o arquivo: " + e.getMessage());
         }
-    } // Faltava fechar a chave do método cadastrarProdutor!
+    }
 
     // ROTA 2: Listar todos os Produtores do Contador Logado
     @GetMapping("/listar/{contadorId}")
     @Transactional(readOnly = true)
     public ResponseEntity<List<ProdutorDTO>> listarPorContador(@PathVariable Long contadorId) {
         List<Produtor> produtores = produtorRepository.findByContadorId(contadorId);
-
         List<ProdutorDTO> listaLeve = produtores.stream().map(p -> {
             ProdutorDTO dto = new ProdutorDTO();
             dto.setId(p.getId());
             dto.setNome(p.getNome());
             dto.setCpfCnpj(p.getCpfCnpj());
+            dto.setCnpj(p.getCnpj());
             dto.setInscricaoEstadual(p.getInscricaoEstadual());
             dto.setValidadeCertificado(p.getValidadeCertificado());
             return dto;
         }).collect(Collectors.toList());
-
         return ResponseEntity.ok(listaLeve);
     }
 
@@ -130,7 +126,6 @@ public class ProdutorController {
         String token = JWT.create()
                 .withIssuer("AgroPops API")
                 .withSubject(produtor.getCpfCnpj())
-                // --- A NOVA LINHA DE VALIDADE ABAIXO ---
                 .withExpiresAt(java.time.Instant.now().plus(30, java.time.temporal.ChronoUnit.DAYS))
                 .sign(algoritmo);
 

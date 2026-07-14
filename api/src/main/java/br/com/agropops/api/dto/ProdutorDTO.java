@@ -10,6 +10,7 @@ public class ProdutorDTO {
     private Long id;
     private String nome;
     private String cpfCnpj;
+    private String cnpj;
     private String inscricaoEstadual;
     private Date validadeCertificado;
 }

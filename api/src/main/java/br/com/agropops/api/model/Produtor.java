@@ -21,6 +21,8 @@ public class Produtor {
 
     private String nome;
     private String cpfCnpj;
+    @Column
+    private String cnpj;
     private String inscricaoEstadual;
 
     @Column(length = 50)
@@ -33,10 +35,9 @@ public class Produtor {
     @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
     private String senhaCertificado;
 
-    // --- NOVO CAMPO DE CONTROLE DE TEMPO DA SEFAZ ---
+    // CAMPO DE CONTROLE DE TEMPO DA SEFAZ
     @Column
     private LocalDateTime ultimaSincronizacaoSefaz;
-    // ------------------------------------------------
 
     @Temporal(TemporalType.DATE)
     private Date validadeCertificado;

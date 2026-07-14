@@ -13,5 +13,6 @@ public class NotaFiscalDTO {
     private String tipo;
     private BigDecimal valorTotal;
     private String empresaEnvolvida;
+    private String chaveAcessoReferencia;
     private List<ItemNotaDTO> itens;
 }

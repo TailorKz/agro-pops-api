@@ -1,5 +1,6 @@
 package br.com.agropops.api.security;
 
+import br.com.agropops.api.model.Admin; // <-- NOVO IMPORT NECESSÁRIO
 import br.com.agropops.api.model.Contador;
 import br.com.agropops.api.model.Produtor;
 import com.auth0.jwt.JWT;
@@ -22,7 +23,7 @@ import java.util.Collections;
 public class SecurityFilter extends OncePerRequestFilter {
 
     @Autowired
-    private UsuarioAuthService authService; // <-- USANDO O NOVO SERVIÇO BLINDADO
+    private UsuarioAuthService authService;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain) throws ServletException, IOException {
@@ -39,13 +40,22 @@ public class SecurityFilter extends OncePerRequestFilter {
                 System.out.println("🕵️ Fiscal encontrou um Crachá de: " + subject);
 
                 if (subject.contains("@")) {
-                    // Delega a busca para o serviço transacional
-                    Contador contador = authService.buscarContador(subject);
-                    if (contador != null) {
-                        var authentication = new UsernamePasswordAuthenticationToken(contador, null, Collections.emptyList());
+                    // 1. Tenta buscar como Admin primeiro
+                    Admin admin = authService.buscarAdmin(subject);
+                    if (admin != null) {
+                        var authentication = new UsernamePasswordAuthenticationToken(admin, null, Collections.emptyList());
                         authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                         SecurityContextHolder.getContext().setAuthentication(authentication);
-                        System.out.println("✅ Acesso Liberado para Contador: " + contador.getNomeEscritorio());
+                        System.out.println("✅ Acesso Liberado para ADMIN: " + admin.getNome());
+                    } else {
+                        // 2. Se não for Admin, tenta como Contador
+                        Contador contador = authService.buscarContador(subject);
+                        if (contador != null) {
+                            var authentication = new UsernamePasswordAuthenticationToken(contador, null, Collections.emptyList());
+                            authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                            SecurityContextHolder.getContext().setAuthentication(authentication);
+                            System.out.println("✅ Acesso Liberado para Contador: " + contador.getNomeEscritorio());
+                        }
                     }
                 } else {
                     // Delega a busca para o serviço transacional (O PostgreSQL agora lê o @Lob!)

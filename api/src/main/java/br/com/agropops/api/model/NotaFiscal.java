@@ -34,6 +34,9 @@ public class NotaFiscal {
 
     private String empresaEnvolvida; // Razão Social
 
+    @Column(length = 44)
+    private String chaveAcessoReferencia; // Guarda o vínculo da contra-nota
+
     @ManyToOne
     @JoinColumn(name = "produtor_id", nullable = false)
     @JsonIgnore

@@ -11,6 +11,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -24,10 +25,31 @@ public class LivroCaixaService {
     @Autowired
     private LancamentoAvulsoRepository avulsoRepository;
 
+    // --- LÓGICA DE PREJUÍZO DO ANO ANTERIOR ---
+    private BigDecimal calcularPrejuizoAnoAnterior(Long produtorId, int anoAtual) {
+        int anoAnterior = anoAtual - 1;
+
+        BigDecimal receitasNfe = notaRepository.sumReceitasByProdutorAndAno(produtorId, anoAnterior);
+        BigDecimal receitasAvulso = avulsoRepository.sumReceitasByProdutorAndAno(produtorId, anoAnterior);
+        BigDecimal totalReceitas = receitasNfe.add(receitasAvulso);
+
+        BigDecimal dedutivelNfe = notaRepository.sumDespesasDedutiveisNfeByProdutorAndAno(produtorId, anoAnterior);
+        BigDecimal dedutivelAvulso = avulsoRepository.sumDespesasDedutiveisAvulsoByProdutorAndAno(produtorId, anoAnterior);
+        BigDecimal totalDedutivel = dedutivelNfe.add(dedutivelAvulso);
+
+        BigDecimal saldo = totalReceitas.subtract(totalDedutivel);
+
+        // Se saldo < 0, a fazenda deu prejuízo fiscal no ano anterior.
+        if (saldo.compareTo(BigDecimal.ZERO) < 0) {
+            return saldo.abs(); // Retorna o valor positivo do prejuízo para ser somado às despesas do ano atual
+        }
+        return BigDecimal.ZERO;
+    }
+
     public List<LancamentoDTO> buscarLivroCaixa(Long produtorId, int ano) {
         List<LancamentoDTO> livroCaixa = new ArrayList<>();
 
-        // 1. Extrair Itens das Notas Fiscais (Fonte 1)
+        // 1. Extrair Itens das Notas Fiscais
         List<NotaFiscal> notas = notaRepository.findByProdutorIdAndAnoWithItens(produtorId, ano);
         for (NotaFiscal nota : notas) {
             for (ItemNota item : nota.getItens()) {
@@ -44,7 +66,7 @@ public class LivroCaixaService {
             }
         }
 
-        // 2. Extrair Lançamentos Avulsos (Fonte 2)
+        // 2. Extrair Lançamentos Avulsos
         List<LancamentoAvulso> avulsos = avulsoRepository.findByProdutorIdAndAno(produtorId, ano);
         for (LancamentoAvulso avulso : avulsos) {
             livroCaixa.add(new LancamentoDTO(
@@ -59,29 +81,46 @@ public class LivroCaixaService {
             ));
         }
 
-        // 3. Ordenar tudo por data (do mais antigo para o mais novo)
+        // 3. INTELIGÊNCIA FISCAL: Injetar Prejuízo Compensável do Ano Anterior
+        BigDecimal prejuizoAnterior = calcularPrejuizoAnoAnterior(produtorId, ano);
+        if (prejuizoAnterior.compareTo(BigDecimal.ZERO) > 0) {
+            livroCaixa.add(new LancamentoDTO(
+                    "SISTEMA-PREJ",
+                    LocalDate.of(ano, 1, 1), // Entra sempre no dia 1º de Janeiro do ano corrente
+                    "LCDPR " + (ano - 1),
+                    "Prejuízo Fiscal Compensável do Exercício Anterior",
+                    "SISTEMA", // <-- Nova Origem para identificar no Frontend
+                    "SAIDA",
+                    prejuizoAnterior,
+                    true // O prejuízo é 100% dedutível por lei
+            ));
+        }
+
+        // 4. Ordenar tudo por data (do mais antigo para o mais novo)
         livroCaixa.sort(Comparator.comparing(LancamentoDTO::data));
 
         return livroCaixa;
     }
 
     public TotaisLivroCaixaDTO calcularTotais(Long produtorId, int ano) {
-        // 1. Receitas Totais (NFE + Avulso)
         BigDecimal receitasNfe = notaRepository.sumReceitasByProdutorAndAno(produtorId, ano);
         BigDecimal receitasAvulso = avulsoRepository.sumReceitasByProdutorAndAno(produtorId, ano);
         BigDecimal totalReceitas = receitasNfe.add(receitasAvulso);
 
-        // 2. Dedutibilidades Somadas (NFE + Avulso)
         BigDecimal dedutivelNfe = notaRepository.sumDespesasDedutiveisNfeByProdutorAndAno(produtorId, ano);
         BigDecimal dedutivelAvulso = avulsoRepository.sumDespesasDedutiveisAvulsoByProdutorAndAno(produtorId, ano);
         BigDecimal totalDedutivelCalculado = dedutivelNfe.add(dedutivelAvulso);
 
-        // 3. Saídas Totais Reais para Trava Matemática (NFE + Avulso)
         BigDecimal saidasNfe = notaRepository.sumTotalSaidasNfeByProdutorAndAno(produtorId, ano);
         BigDecimal saidasAvulso = avulsoRepository.sumTotalSaidasAvulsoByProdutorAndAno(produtorId, ano);
         BigDecimal totalSaidasReais = saidasNfe.add(saidasAvulso);
 
-        // 4. Regra de Negócio: O total dedutível nunca pode ser maior que o total de saídas (Math.min)
+        // INTELIGÊNCIA FISCAL: Aplicar Prejuízo Anterior nas contas
+        BigDecimal prejuizoAnterior = calcularPrejuizoAnoAnterior(produtorId, ano);
+        totalDedutivelCalculado = totalDedutivelCalculado.add(prejuizoAnterior);
+        totalSaidasReais = totalSaidasReais.add(prejuizoAnterior); // Entra na trava de saídas também
+
+        // Regra de Negócio: O total dedutível nunca pode ser maior que o total de saídas
         BigDecimal despesasEfetivas = totalDedutivelCalculado.min(totalSaidasReais);
 
         return new TotaisLivroCaixaDTO(totalReceitas, despesasEfetivas);
