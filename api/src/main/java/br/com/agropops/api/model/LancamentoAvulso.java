@@ -21,9 +21,14 @@ public class LancamentoAvulso {
     private BigDecimal valor;
     private Boolean isDedutivel;
 
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "produtor_id")
     private Produtor produtor;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "propriedade_rural_id")
+    private PropriedadeRural propriedadeRural;
 
     // Getters e Setters
     public Long getId() { return id; }
@@ -46,4 +51,6 @@ public class LancamentoAvulso {
     public void setIsDedutivel(Boolean isDedutivel) { this.isDedutivel = isDedutivel; }
     public Produtor getProdutor() { return produtor; }
     public void setProdutor(Produtor produtor) { this.produtor = produtor; }
+    public PropriedadeRural getPropriedadeRural() { return propriedadeRural; }
+    public void setPropriedadeRural(PropriedadeRural propriedadeRural) { this.propriedadeRural = propriedadeRural; }
 }

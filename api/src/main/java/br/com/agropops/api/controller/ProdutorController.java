@@ -1,5 +1,6 @@
 package br.com.agropops.api.controller;
 
+import br.com.agropops.api.dto.PropriedadeRuralDTO;
 import br.com.agropops.api.model.Contador;
 import br.com.agropops.api.model.Produtor;
 import br.com.agropops.api.repository.ContadorRepository;
@@ -21,6 +22,8 @@ import java.util.Optional;
 import br.com.agropops.api.dto.ProdutorDTO;
 import java.util.stream.Collectors;
 import org.springframework.transaction.annotation.Transactional;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.core.type.TypeReference;
 
 @RestController
 @RequestMapping("/api/produtores")
@@ -40,9 +43,10 @@ public class ProdutorController {
     public ResponseEntity<?> cadastrarProdutor(
             @RequestParam("nome") String nome,
             @RequestParam("cpfCnpj") String cpfCnpj,
-            @RequestParam(value = "cnpj", required = false) String cnpj, // <-- NOVO PARÂMETRO
-            @RequestParam("inscricaoEstadual") String inscricaoEstadual,
+            @RequestParam(value = "cnpj", required = false) String cnpj,
+            @RequestParam(value = "telefone", required = false) String telefone,
             @RequestParam("contadorId") Long contadorId,
+            @RequestParam("propriedades") String propriedadesJson, // <-- RECEBE A LISTA COMO TEXTO JSON
             @RequestParam(value = "senhaCertificado", required = false) String senhaCertificado,
             @RequestParam(value = "certificado", required = false) MultipartFile certificado) {
 
@@ -55,35 +59,40 @@ public class ProdutorController {
             Produtor produtor = new Produtor();
             produtor.setNome(nome);
             produtor.setCpfCnpj(cpfCnpj);
-            produtor.setCnpj(cnpj); // <-- SALVANDO O CNPJ
-            produtor.setInscricaoEstadual(inscricaoEstadual);
-            produtor.setSenhaCertificado(senhaCertificado);
+            produtor.setCnpj(cnpj);
+            produtor.setTelefone(telefone);
             produtor.setContador(contadorOpt.get());
 
-            // Transforma o ficheiro .pfx numa matriz de bytes e guarda no objeto
+            // --- TRUQUE DE MESTRE: CONVERTER O JSON PARA A LISTA DE PROPRIEDADES ---
+            ObjectMapper mapper = new ObjectMapper();
+            List<br.com.agropops.api.model.PropriedadeRural> listaPropriedades =
+                    mapper.readValue(propriedadesJson, new TypeReference<List<br.com.agropops.api.model.PropriedadeRural>>(){});
+
+            // Vincula o produtor a cada uma das propriedades criadas
+            for (br.com.agropops.api.model.PropriedadeRural p : listaPropriedades) {
+                p.setProdutor(produtor);
+            }
+            produtor.setPropriedades(listaPropriedades);
+
+            // Transforma o arquivo .pfx em bytes e processa a senha (Mantido igual)
             if (certificado != null && !certificado.isEmpty()) {
                 byte[] bytesCertificado = certificado.getBytes();
                 produtor.setCertificadoPfx(bytesCertificado);
-
+                produtor.setSenhaCertificado(senhaCertificado);
                 try {
                     Date validade = certificadoService.extrairValidade(bytesCertificado, senhaCertificado);
                     produtor.setValidadeCertificado(validade);
                     System.out.println("✅ Certificado válido! Expira em: " + validade);
                 } catch (Exception e) {
-                    // Bloqueia o registo e avisa o ecrã do React que a senha está errada
-                    return ResponseEntity.badRequest().body(e.getMessage());
+                    return ResponseEntity.badRequest().body("Senha do certificado incorreta ou arquivo inválido.");
                 }
             }
 
-            // Salva no banco de dados
             Produtor salvo = produtorRepository.save(produtor);
-
-            // mockDataService.gerarNotasFalsasParaProdutor(salvo);
-
             return ResponseEntity.ok(salvo);
 
         } catch (Exception e) {
-            return ResponseEntity.internalServerError().body("Erro interno ao processar o arquivo: " + e.getMessage());
+            return ResponseEntity.internalServerError().body("Erro interno: " + e.getMessage());
         }
     }
 
@@ -92,16 +101,32 @@ public class ProdutorController {
     @Transactional(readOnly = true)
     public ResponseEntity<List<ProdutorDTO>> listarPorContador(@PathVariable Long contadorId) {
         List<Produtor> produtores = produtorRepository.findByContadorId(contadorId);
+
         List<ProdutorDTO> listaLeve = produtores.stream().map(p -> {
             ProdutorDTO dto = new ProdutorDTO();
             dto.setId(p.getId());
             dto.setNome(p.getNome());
             dto.setCpfCnpj(p.getCpfCnpj());
             dto.setCnpj(p.getCnpj());
-            dto.setInscricaoEstadual(p.getInscricaoEstadual());
+            dto.setTelefone(p.getTelefone());
             dto.setValidadeCertificado(p.getValidadeCertificado());
+
+            // Converte a lista do Banco para DTO
+            List<PropriedadeRuralDTO> propsDTO = p.getPropriedades().stream().map(prop -> {
+                PropriedadeRuralDTO propDto = new PropriedadeRuralDTO();
+                propDto.setId(prop.getId());
+                propDto.setNome(prop.getNome());
+                propDto.setInscricaoEstadual(prop.getInscricaoEstadual());
+                propDto.setCaepf(prop.getCaepf());
+                propDto.setPercentualParticipacao(prop.getPercentualParticipacao());
+                return propDto;
+            }).collect(java.util.stream.Collectors.toList());
+
+            dto.setPropriedades(propsDTO);
+
             return dto;
-        }).collect(Collectors.toList());
+        }).collect(java.util.stream.Collectors.toList());
+
         return ResponseEntity.ok(listaLeve);
     }
 

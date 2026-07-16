@@ -11,5 +11,6 @@ public record LancamentoAvulsoForm(
         String historico,
         String tipo,
         BigDecimal valor,
-        Boolean isDedutivel
+        Boolean isDedutivel,
+        Long propriedadeId
 ) {}

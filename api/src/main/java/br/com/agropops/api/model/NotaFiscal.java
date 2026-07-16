@@ -42,6 +42,11 @@ public class NotaFiscal {
     @JsonIgnore
     private Produtor produtor;
 
+    // VÍNCULO DA NOTA COM A FAZENDA
+    @ManyToOne
+    @JoinColumn(name = "propriedade_rural_id")
+    private PropriedadeRural propriedadeRural;
+
     // Relação vários itens
     @OneToMany(mappedBy = "notaFiscal", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<ItemNota> itens = new ArrayList<>();

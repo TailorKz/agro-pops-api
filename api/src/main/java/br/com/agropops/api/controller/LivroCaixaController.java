@@ -5,8 +5,10 @@ import br.com.agropops.api.dto.LancamentoAvulsoForm;
 import br.com.agropops.api.dto.TotaisLivroCaixaDTO;
 import br.com.agropops.api.model.LancamentoAvulso;
 import br.com.agropops.api.model.Produtor;
+import br.com.agropops.api.model.PropriedadeRural;
 import br.com.agropops.api.repository.LancamentoAvulsoRepository;
 import br.com.agropops.api.repository.ProdutorRepository;
+import br.com.agropops.api.repository.PropriedadeRuralRepository;
 import br.com.agropops.api.service.LivroCaixaService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -27,7 +29,9 @@ public class LivroCaixaController {
     @Autowired
     private ProdutorRepository produtorRepository;
 
-    // 1. busca a listagem do Livro Caixa
+    @Autowired
+    private PropriedadeRuralRepository propriedadeRuralRepository; // <-- REPOSITÓRIO CORRETO
+
     @GetMapping("/{produtorId}")
     public ResponseEntity<List<LancamentoDTO>> getLivroCaixa(
             @PathVariable Long produtorId,
@@ -36,7 +40,6 @@ public class LivroCaixaController {
         return ResponseEntity.ok(lancamentos);
     }
 
-    // 2. cadastra um Lançamento manual
     @PostMapping("/{produtorId}/avulso")
     public ResponseEntity<String> cadastrarLancamentoAvulso(
             @PathVariable Long produtorId,
@@ -56,22 +59,24 @@ public class LivroCaixaController {
         avulso.setIsDedutivel(!form.tipo().equals("ENTRADA") && form.isDedutivel());
         avulso.setProdutor(produtor);
 
-        avulsoRepository.save(avulso);
+        // --- AMARRAÇÃO COM A FAZENDA SELECIONADA ---
+        if (form.propriedadeId() != null) {
+            PropriedadeRural propriedade = propriedadeRuralRepository.findById(form.propriedadeId()).orElse(null);
+            avulso.setPropriedadeRural(propriedade);
+        }
 
+        avulsoRepository.save(avulso);
         return ResponseEntity.ok("Lançamento avulso registrado com sucesso no Livro Caixa.");
     }
 
-    //  3. Agregação rápida para o Simulador IRPF
     @GetMapping("/{produtorId}/totais")
     public ResponseEntity<TotaisLivroCaixaDTO> getTotaisLivroCaixa(
             @PathVariable Long produtorId,
             @RequestParam int ano) {
-
         TotaisLivroCaixaDTO totais = livroCaixaService.calcularTotais(produtorId, ano);
         return ResponseEntity.ok(totais);
     }
 
-    // 4. deletar APENAS Lançamentos Avulsos
     @DeleteMapping("/avulso/{id}")
     public ResponseEntity<String> deletarLancamentoAvulso(@PathVariable Long id) {
         if (!avulsoRepository.existsById(id)) {

@@ -107,9 +107,11 @@ public class NotaFiscalController {
     @PostMapping("/importar/{produtorId}")
     public ResponseEntity<String> importarXml(
             @PathVariable Long produtorId,
+            @RequestParam(value = "propriedadeFallbackId", required = false) Long propriedadeFallbackId, // <-- NOVO PARÂMETRO AQUI
             @RequestParam("arquivos") List<MultipartFile> arquivos) {
 
-        int importadas = sefazXmlService.importarNotas(produtorId, arquivos);
+
+        int importadas = sefazXmlService.importarNotas(produtorId, propriedadeFallbackId, arquivos);
         return ResponseEntity.ok("Sucesso! " + importadas + " novas notas foram importadas.");
     }
 

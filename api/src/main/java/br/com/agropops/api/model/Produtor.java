@@ -7,7 +7,9 @@ import lombok.Getter;
 import lombok.Setter;
 
 import java.time.LocalDateTime; // <-- ADICIONE ESTA IMPORTAÇÃO
+import java.util.ArrayList;
 import java.util.Date;
+import java.util.List;
 
 @Getter
 @Setter
@@ -20,10 +22,15 @@ public class Produtor {
     private Long id;
 
     private String nome;
+
+    @Column(nullable = false)
     private String cpfCnpj;
+
     @Column
     private String cnpj;
-    private String inscricaoEstadual;
+
+    @Column
+    private String telefone;
 
     @Column(length = 50)
     private String ultimoNsu;
@@ -46,4 +53,8 @@ public class Produtor {
     @JoinColumn(name = "contador_id", nullable = false)
     @JsonIgnore
     private Contador contador;
+
+
+    @OneToMany(mappedBy = "produtor", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<PropriedadeRural> propriedades = new ArrayList<>();
 }

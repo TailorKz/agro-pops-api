@@ -3,6 +3,7 @@ package br.com.agropops.api.service;
 import br.com.agropops.api.model.ItemNota;
 import br.com.agropops.api.model.NotaFiscal;
 import br.com.agropops.api.model.Produtor;
+import br.com.agropops.api.model.PropriedadeRural;
 import br.com.agropops.api.model.RegraNCM;
 import br.com.agropops.api.repository.NotaFiscalRepository;
 import br.com.agropops.api.repository.ProdutorRepository;
@@ -36,19 +37,16 @@ public class SefazXmlService {
     @Autowired
     private RegraNCMRepository regraRepository;
 
-    // --- DICIONÁRIOS DE CFOP DE DEVOLUÇÃO (Otimizados em RAM) ---
-    // Devolução de Venda: Produtor vendeu (Receita), cliente devolveu (Anula a Receita)
     private static final Set<String> CFOPS_DEVOLUCAO_VENDA = Set.of(
             "1201", "1202", "1410", "1411", "2201", "2202", "2410", "2411"
     );
 
-    // Devolução de Compra: Produtor comprou (Despesa), devolveu ao fornecedor (Anula a Despesa)
     private static final Set<String> CFOPS_DEVOLUCAO_COMPRA = Set.of(
             "5201", "5202", "5410", "5411", "6201", "6202", "6410", "6411"
     );
 
     @Transactional
-    public int importarNotas(Long produtorId, List<MultipartFile> arquivos) {
+    public int importarNotas(Long produtorId, Long propriedadeFallbackId, List<MultipartFile> arquivos) { // <-- Assinatura corrigida!
         Produtor produtor = produtorRepository.findById(produtorId).orElseThrow();
         List<RegraNCM> regras = regraRepository.findByContadorId(produtor.getContador().getId());
         Map<String, Boolean> mapaRegras = regras.stream()
@@ -60,7 +58,7 @@ public class SefazXmlService {
         for (MultipartFile arquivo : arquivos) {
             try {
                 Document doc = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(arquivo.getInputStream());
-                NotaFiscal notaProcessada = processarNotaNaMemoria(doc, produtor, mapaRegras, chavesExistentes);
+                NotaFiscal notaProcessada = processarNotaNaMemoria(doc, produtor, mapaRegras, chavesExistentes, propriedadeFallbackId);
                 if (notaProcessada != null) {
                     notasParaSalvar.add(notaProcessada);
                     chavesExistentes.add(notaProcessada.getChaveAcesso());
@@ -84,10 +82,12 @@ public class SefazXmlService {
                     .collect(Collectors.toMap(RegraNCM::getNcm, RegraNCM::getIsDedutivel, (r1, r2) -> r1));
 
             Set<String> chavesExistentes = notaRepository.findChavesAcessoByProdutorId(produtor.getId());
+
             InputStream targetStream = new ByteArrayInputStream(xmlContent.getBytes());
             Document doc = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(targetStream);
 
-            NotaFiscal notaProcessada = processarNotaNaMemoria(doc, produtor, mapaRegras, chavesExistentes);
+            // Notas do Robô Automático não têm fallback de tela, enviamos 'null'
+            NotaFiscal notaProcessada = processarNotaNaMemoria(doc, produtor, mapaRegras, chavesExistentes, null);
 
             if (notaProcessada != null) {
                 notaRepository.save(notaProcessada);
@@ -100,7 +100,7 @@ public class SefazXmlService {
         }
     }
 
-    private NotaFiscal processarNotaNaMemoria(Document doc, Produtor produtor, Map<String, Boolean> mapaRegras, Set<String> chavesExistentes) {
+    private NotaFiscal processarNotaNaMemoria(Document doc, Produtor produtor, Map<String, Boolean> mapaRegras, Set<String> chavesExistentes, Long propriedadeFallbackId) {
         try {
             String idAtributo = doc.getElementsByTagName("infNFe").item(0).getAttributes().getNamedItem("Id").getNodeValue();
             String chaveAcesso = idAtributo.replace("NFe", "");
@@ -118,16 +118,21 @@ public class SefazXmlService {
             String tpNF = doc.getElementsByTagName("tpNF").item(0).getTextContent();
             String tipo = tpNF.equals("0") ? "ENTRADA" : "SAIDA";
 
+            // --- INTELIGÊNCIA: EXTRAÇÃO DA IE E NOME DO EMITENTE/DESTINATÁRIO ---
             String emitenteNome = "Desconhecido";
+            String ieEmitente = "";
             if (doc.getElementsByTagName("emit").getLength() > 0) {
                 org.w3c.dom.Element emit = (org.w3c.dom.Element) doc.getElementsByTagName("emit").item(0);
                 if(emit.getElementsByTagName("xNome").getLength() > 0) emitenteNome = emit.getElementsByTagName("xNome").item(0).getTextContent();
+                if(emit.getElementsByTagName("IE").getLength() > 0) ieEmitente = emit.getElementsByTagName("IE").item(0).getTextContent().replaceAll("\\D", "");
             }
 
             String destinatarioNome = "Desconhecido";
+            String ieDestinatario = "";
             if (doc.getElementsByTagName("dest").getLength() > 0) {
                 org.w3c.dom.Element dest = (org.w3c.dom.Element) doc.getElementsByTagName("dest").item(0);
                 if(dest.getElementsByTagName("xNome").getLength() > 0) destinatarioNome = dest.getElementsByTagName("xNome").item(0).getTextContent();
+                if(dest.getElementsByTagName("IE").getLength() > 0) ieDestinatario = dest.getElementsByTagName("IE").item(0).getTextContent().replaceAll("\\D", "");
             }
 
             String empresaEnvolvida = tipo.equals("SAIDA") ? emitenteNome : destinatarioNome;
@@ -135,7 +140,7 @@ public class SefazXmlService {
             NotaFiscal nota = new NotaFiscal();
             nota.setChaveAcesso(chaveAcesso);
             nota.setNumero(numero);
-            // CAPTURA DE CONTRA-NOTA (DEVOLUÇÃO)
+
             String chaveAcessoReferencia = null;
             if (doc.getElementsByTagName("refNFe").getLength() > 0) {
                 chaveAcessoReferencia = doc.getElementsByTagName("refNFe").item(0).getTextContent();
@@ -146,10 +151,40 @@ public class SefazXmlService {
             nota.setEmpresaEnvolvida(empresaEnvolvida);
             nota.setProdutor(produtor);
 
-            // Variável para recalcular o valor real da nota baseado nos itens
-            BigDecimal valorTotalAjustado = BigDecimal.ZERO;
+            // ========================================================
+            // MATCH DE FAZENDA PELA INSCRIÇÃO ESTADUAL (IE)
+            // ========================================================
+            PropriedadeRural propriedadeDestino = null;
 
+            for (PropriedadeRural prop : produtor.getPropriedades()) {
+                String ieFazenda = prop.getInscricaoEstadual();
+                if (ieFazenda != null && !ieFazenda.isEmpty()) {
+                    String ieLimpa = ieFazenda.replaceAll("\\D", "");
+                    if (ieLimpa.equals(ieEmitente) || ieLimpa.equals(ieDestinatario)) {
+                        propriedadeDestino = prop;
+                        System.out.println("✅ MATCH DE IE ENCONTRADO! Nota vinculada à: " + prop.getNome());
+                        break;
+                    }
+                }
+            }
+
+            // Se o XML não tiver IE ou não bater, usa o Fallback que o contador escolheu na tela
+            if (propriedadeDestino == null && propriedadeFallbackId != null) {
+                propriedadeDestino = produtor.getPropriedades().stream()
+                        .filter(p -> p.getId().equals(propriedadeFallbackId))
+                        .findFirst()
+                        .orElse(null);
+            }
+            // Se tudo falhar, joga na Propriedade Principal
+            if (propriedadeDestino == null && !produtor.getPropriedades().isEmpty()) {
+                propriedadeDestino = produtor.getPropriedades().get(0);
+            }
+            nota.setPropriedadeRural(propriedadeDestino);
+            // ========================================================
+
+            BigDecimal valorTotalAjustado = BigDecimal.ZERO;
             org.w3c.dom.NodeList detNodes = doc.getElementsByTagName("det");
+
             for (int i = 0; i < detNodes.getLength(); i++) {
                 org.w3c.dom.Element det = (org.w3c.dom.Element) detNodes.item(i);
                 org.w3c.dom.Element prod = (org.w3c.dom.Element) det.getElementsByTagName("prod").item(0);
@@ -157,7 +192,6 @@ public class SefazXmlService {
                 String nomeProduto = prod.getElementsByTagName("xProd").item(0).getTextContent();
                 String ncmProduto = prod.getElementsByTagName("NCM").item(0).getTextContent();
 
-                // INTELIGÊNCIA FISCAL: Extração do CFOP
                 String cfop = "";
                 if (prod.getElementsByTagName("CFOP").getLength() > 0) {
                     cfop = prod.getElementsByTagName("CFOP").item(0).getTextContent();
@@ -166,14 +200,10 @@ public class SefazXmlService {
                 String valorProdutoStr = prod.getElementsByTagName("vProd").item(0).getTextContent();
                 BigDecimal valorProduto = new BigDecimal(valorProdutoStr);
 
-                // Consulta a Memória (RAM) para regras de NCM
                 boolean isDedutivel = tipo.equals("SAIDA") && mapaRegras.getOrDefault(ncmProduto, false);
 
-                // ANÁLISE DE DEVOLUÇÃO
                 if (CFOPS_DEVOLUCAO_VENDA.contains(cfop) || CFOPS_DEVOLUCAO_COMPRA.contains(cfop)) {
-                    // Inverte o valor para abater a conta no banco de dados
                     valorProduto = valorProduto.negate();
-                    // Sinalização visual para o contador no Frontend
                     nomeProduto = "[DEVOLUÇÃO] " + nomeProduto;
                 }
 
@@ -185,14 +215,10 @@ public class SefazXmlService {
                 item.setNotaFiscal(nota);
 
                 nota.getItens().add(item);
-
-                // Acumula o valor ajustado da nota
                 valorTotalAjustado = valorTotalAjustado.add(valorProduto);
             }
 
-            // O valor total da nota no banco reflete a soma exata dos itens (mesmo se for negativo)
             nota.setValorTotal(valorTotalAjustado);
-
             return nota;
         } catch (Exception e) {
             return null;
