@@ -11,5 +11,6 @@ public record LancamentoDTO(
         String origem,
         String tipo,
         BigDecimal valor,
-        Boolean isDedutivel
+        Boolean isDedutivel,
+        Long notaId
 ) {}

@@ -4,20 +4,25 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
-import java.math.BigDecimal;
 
 @Getter
 @Setter
 @Entity
-@Table(name = "propriedades_rurais")
-public class PropriedadeRural {
+@Table(name = "fornecedores")
+public class Fornecedor {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @Column(nullable = false)
-    private String nome;
+    private String nome; // Razão Social ou Nome
+
+    @Column
+    private String fantasia;
+
+    @Column
+    private String email;
 
     @Column
     private String cpfCnpj;
@@ -26,13 +31,10 @@ public class PropriedadeRural {
     private String inscricaoEstadual;
 
     @Column
-    private String caepf;
-
-    @Column(nullable = false, precision = 5, scale = 2)
-    private BigDecimal percentualParticipacao;
+    private String endereco;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "produtor_id", nullable = false)
+    @JoinColumn(name = "contador_id", nullable = false)
     @JsonIgnore
-    private Produtor produtor;
+    private Contador contador;
 }

@@ -61,7 +61,8 @@ public class LivroCaixaService {
                         "NFE",
                         nota.getTipo(),
                         item.getValor(),
-                        item.getIsDedutivel()
+                        item.getIsDedutivel(),
+                        nota.getId()
                 ));
             }
         }
@@ -77,7 +78,8 @@ public class LivroCaixaService {
                     "AVULSO",
                     avulso.getTipo(),
                     avulso.getValor(),
-                    avulso.getIsDedutivel()
+                    avulso.getIsDedutivel(),
+                    null
             ));
         }
 
@@ -92,7 +94,8 @@ public class LivroCaixaService {
                     "SISTEMA", // <-- Nova Origem para identificar no Frontend
                     "SAIDA",
                     prejuizoAnterior,
-                    true // O prejuízo é 100% dedutível por lei
+                    true, // O prejuízo é 100% dedutível por lei
+                    null
             ));
         }
 

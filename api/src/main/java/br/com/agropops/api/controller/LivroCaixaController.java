@@ -52,6 +52,7 @@ public class LivroCaixaController {
         avulso.setData(form.data());
         avulso.setTipoDocumento(form.tipoDocumento());
         avulso.setDocumento(form.documento());
+        avulso.setNomeParticipante(form.nomeParticipante());
         avulso.setCpfCnpjParticipante(form.cpfCnpjParticipante());
         avulso.setHistorico(form.historico());
         avulso.setTipo(form.tipo());

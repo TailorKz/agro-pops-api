@@ -12,6 +12,9 @@ public class LancamentoAvulso {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column
+    private String nomeParticipante;
+
     private LocalDate data;
     private String tipoDocumento; // "1"-Nota, "2"-Fatura, "3"-Recibo, "4"-Contrato, "5"-Folha, "6"-Outros
     private String documento;
@@ -53,4 +56,6 @@ public class LancamentoAvulso {
     public void setProdutor(Produtor produtor) { this.produtor = produtor; }
     public PropriedadeRural getPropriedadeRural() { return propriedadeRural; }
     public void setPropriedadeRural(PropriedadeRural propriedadeRural) { this.propriedadeRural = propriedadeRural; }
+    public String getNomeParticipante() { return nomeParticipante; }
+    public void setNomeParticipante(String nomeParticipante) { this.nomeParticipante = nomeParticipante; }
 }

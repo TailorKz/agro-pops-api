@@ -33,6 +33,9 @@ public class NotaFiscalController {
     @Autowired
     private br.com.agropops.api.repository.ProdutorRepository produtorRepository;
 
+    @Autowired
+    private br.com.agropops.api.repository.ItemNotaRepository itemNotaRepository;
+
     // --- 1. ENDPOINT LISTAR (AGORA FILTRANDO DATAS CORRETAMENTE) ---
     @Transactional(readOnly = true)
     @GetMapping("/listar/{produtorId}")
@@ -166,5 +169,44 @@ public class NotaFiscalController {
     public ResponseEntity<?> deletarNota(@PathVariable Long id) {
         notaFiscalRepository.deleteById(id);
         return ResponseEntity.ok("Nota excluída com sucesso.");
+    }
+
+    @PutMapping("/item/{itemId}/toggle-dedutibilidade")
+    @Transactional
+    public ResponseEntity<?> toggleDedutibilidadeItem(@PathVariable Long itemId) {
+        return itemNotaRepository.findById(itemId).map(item -> {
+            item.setIsDedutivel(!item.getIsDedutivel());
+            itemNotaRepository.save(item);
+            return ResponseEntity.ok("Status alterado com sucesso.");
+        }).orElse(ResponseEntity.notFound().build());
+    }
+
+    // Rota para o Modal abrir a Nota Completa
+    @GetMapping("/buscar/{id}")
+    @Transactional(readOnly = true)
+    public ResponseEntity<NotaFiscalDTO> buscarPorId(@PathVariable Long id) {
+        return notaFiscalRepository.findById(id).map(nota -> {
+            NotaFiscalDTO dto = new NotaFiscalDTO();
+            dto.setId(nota.getId());
+            dto.setNumero(nota.getNumero());
+            dto.setDataEmissao(nota.getDataEmissao());
+            dto.setTipo(nota.getTipo());
+            dto.setValorTotal(nota.getValorTotal());
+            dto.setEmpresaEnvolvida(nota.getEmpresaEnvolvida());
+            dto.setChaveAcessoReferencia(nota.getChaveAcessoReferencia());
+
+            List<ItemNotaDTO> itensDTO = nota.getItens().stream().map(item -> {
+                ItemNotaDTO itemDTO = new ItemNotaDTO();
+                itemDTO.setId(item.getId());
+                itemDTO.setDescricao(item.getDescricao());
+                itemDTO.setNcm(item.getNcm());
+                itemDTO.setValor(item.getValor());
+                itemDTO.setIsDedutivel(item.getIsDedutivel());
+                return itemDTO;
+            }).collect(Collectors.toList());
+
+            dto.setItens(itensDTO);
+            return ResponseEntity.ok(dto);
+        }).orElse(ResponseEntity.notFound().build());
     }
 }

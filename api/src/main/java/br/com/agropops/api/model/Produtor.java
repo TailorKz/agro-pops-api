@@ -32,6 +32,9 @@ public class Produtor {
     @Column
     private String telefone;
 
+    @Column
+    private String endereco;
+
     @Column(length = 50)
     private String ultimoNsu;
 

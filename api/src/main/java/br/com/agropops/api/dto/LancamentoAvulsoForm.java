@@ -7,6 +7,7 @@ public record LancamentoAvulsoForm(
         LocalDate data,
         String tipoDocumento,
         String documento,
+        String nomeParticipante,
         String cpfCnpjParticipante,
         String historico,
         String tipo,

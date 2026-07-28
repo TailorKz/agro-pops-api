@@ -45,8 +45,9 @@ public class ProdutorController {
             @RequestParam("cpfCnpj") String cpfCnpj,
             @RequestParam(value = "cnpj", required = false) String cnpj,
             @RequestParam(value = "telefone", required = false) String telefone,
+            @RequestParam(value = "endereco", required = false) String endereco,
             @RequestParam("contadorId") Long contadorId,
-            @RequestParam("propriedades") String propriedadesJson, // <-- RECEBE A LISTA COMO TEXTO JSON
+            @RequestParam("propriedades") String propriedadesJson,
             @RequestParam(value = "senhaCertificado", required = false) String senhaCertificado,
             @RequestParam(value = "certificado", required = false) MultipartFile certificado) {
 
@@ -61,6 +62,7 @@ public class ProdutorController {
             produtor.setCpfCnpj(cpfCnpj);
             produtor.setCnpj(cnpj);
             produtor.setTelefone(telefone);
+            produtor.setEndereco(endereco);
             produtor.setContador(contadorOpt.get());
 
             // --- TRUQUE DE MESTRE: CONVERTER O JSON PARA A LISTA DE PROPRIEDADES ---
