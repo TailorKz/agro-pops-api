@@ -17,7 +17,11 @@ public interface NotaFiscalRepository extends JpaRepository<NotaFiscal, Long> {
 
     List<NotaFiscal> findByProdutorId(Long produtorId);
 
-    List<NotaFiscal> findByProdutorIdAndDataEmissaoBetweenOrderByDataEmissaoDesc(Long produtorId, LocalDate dataInicio, LocalDate dataFim);
+    @Query("SELECT DISTINCT n FROM NotaFiscal n LEFT JOIN FETCH n.itens WHERE n.produtor.id = :produtorId AND n.dataEmissao BETWEEN :dataInicio AND :dataFim ORDER BY n.dataEmissao DESC")
+    List<NotaFiscal> findByProdutorIdAndDataEmissaoBetweenOrderByDataEmissaoDesc(
+            @Param("produtorId") Long produtorId,
+            @Param("dataInicio") LocalDate dataInicio,
+            @Param("dataFim") LocalDate dataFim);
 
     boolean existsByChaveAcesso(String chaveAcesso);
 
@@ -42,4 +46,13 @@ public interface NotaFiscalRepository extends JpaRepository<NotaFiscal, Long> {
 
     @Query("SELECT n FROM NotaFiscal n WHERE n.produtor.id = :produtorId AND n.dataEmissao >= :inicio AND n.dataEmissao <= :fim ORDER BY n.dataEmissao DESC")
     List<NotaFiscal> findByProdutorAndDataEmissaoBetween(@Param("produtorId") Long produtorId, @Param("inicio") LocalDate inicio, @Param("fim") LocalDate fim);
+
+    // Traz a nota com seus itens e parcelas filtrando pelo ANO DO VENCIMENTO
+    @Query("SELECT DISTINCT n FROM NotaFiscal n " +
+            "LEFT JOIN FETCH n.itens " +
+            "LEFT JOIN FETCH n.parcelas p " +
+            "WHERE n.produtor.id = :produtorId AND YEAR(p.dataVencimento) = :ano")
+    List<NotaFiscal> findByProdutorIdAndAnoVencimento(
+            @Param("produtorId") Long produtorId,
+            @Param("ano") int ano);
 }

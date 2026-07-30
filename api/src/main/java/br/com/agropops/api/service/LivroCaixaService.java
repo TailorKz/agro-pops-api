@@ -5,6 +5,7 @@ import br.com.agropops.api.dto.TotaisLivroCaixaDTO;
 import br.com.agropops.api.model.ItemNota;
 import br.com.agropops.api.model.LancamentoAvulso;
 import br.com.agropops.api.model.NotaFiscal;
+import br.com.agropops.api.model.ParcelaNota;
 import br.com.agropops.api.repository.LancamentoAvulsoRepository;
 import br.com.agropops.api.repository.NotaFiscalRepository;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -49,21 +50,28 @@ public class LivroCaixaService {
     public List<LancamentoDTO> buscarLivroCaixa(Long produtorId, int ano) {
         List<LancamentoDTO> livroCaixa = new ArrayList<>();
 
-        // 1. Extrair Itens das Notas Fiscais
-        List<NotaFiscal> notas = notaRepository.findByProdutorIdAndAnoWithItens(produtorId, ano);
+        // 1. Extrair Parcelas das Notas Fiscais (Regime de Caixa)
+        List<NotaFiscal> notas = notaRepository.findByProdutorIdAndAnoVencimento(produtorId, ano);
+
         for (NotaFiscal nota : notas) {
-            for (ItemNota item : nota.getItens()) {
-                livroCaixa.add(new LancamentoDTO(
-                        "NFE-" + item.getId(),
-                        nota.getDataEmissao(),
-                        "NF " + nota.getNumero(),
-                        item.getDescricao(),
-                        "NFE",
-                        nota.getTipo(),
-                        item.getValor(),
-                        item.getIsDedutivel(),
-                        nota.getId()
-                ));
+            // Verifica se a nota possui pelo menos um item dedutível para colorir a linha de verde no Livro Caixa
+            boolean temItemDedutivel = nota.getItens().stream().anyMatch(ItemNota::getIsDedutivel);
+
+            for (ParcelaNota parcela : nota.getParcelas()) {
+                // Filtra para garantir que a parcela realmente pertence ao ano pesquisado
+                if (parcela.getDataVencimento().getYear() == ano) {
+                    livroCaixa.add(new LancamentoDTO(
+                            "NFE-" + parcela.getId(), // Usa o ID da Parcela
+                            parcela.getDataVencimento(), // Usa a data do pagamento
+                            "NF " + nota.getNumero(),
+                            "NF " + nota.getNumero() + " - Parc " + parcela.getNumeroParcela() + " - " + nota.getEmpresaEnvolvida(), // Histórico limpo
+                            "NFE",
+                            nota.getTipo(),
+                            parcela.getValor(),
+                            temItemDedutivel,
+                            nota.getId() // ID da nota para o Modal abrir
+                    ));
+                }
             }
         }
 

@@ -53,7 +53,7 @@ public class Produtor {
     private Date validadeCertificado;
 
     @ManyToOne
-    @JoinColumn(name = "contador_id", nullable = false)
+    @JoinColumn(name = "contador_id")
     @JsonIgnore
     private Contador contador;
 

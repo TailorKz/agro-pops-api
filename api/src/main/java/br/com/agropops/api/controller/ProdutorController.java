@@ -40,7 +40,9 @@ public class ProdutorController {
     private ContadorRepository contadorRepository;
 
     @PostMapping("/cadastrar")
+    @Transactional
     public ResponseEntity<?> cadastrarProdutor(
+            @RequestParam(value = "id", required = false) Long id, // Permite Editar
             @RequestParam("nome") String nome,
             @RequestParam("cpfCnpj") String cpfCnpj,
             @RequestParam(value = "cnpj", required = false) String cnpj,
@@ -57,7 +59,16 @@ public class ProdutorController {
                 return ResponseEntity.badRequest().body("Erro: Contador não encontrado.");
             }
 
-            Produtor produtor = new Produtor();
+            Produtor produtor;
+            if (id != null) {
+                // Puxa o existente e limpa as propriedades antigas para reescrevê-las
+                produtor = produtorRepository.findById(id).orElseThrow(() -> new RuntimeException("Produtor não encontrado"));
+                produtor.getPropriedades().clear();
+            } else {
+                // MODO CRIAÇÃO
+                produtor = new Produtor();
+            }
+
             produtor.setNome(nome);
             produtor.setCpfCnpj(cpfCnpj);
             produtor.setCnpj(cnpj);
@@ -65,18 +76,15 @@ public class ProdutorController {
             produtor.setEndereco(endereco);
             produtor.setContador(contadorOpt.get());
 
-            // --- TRUQUE DE MESTRE: CONVERTER O JSON PARA A LISTA DE PROPRIEDADES ---
             ObjectMapper mapper = new ObjectMapper();
             List<br.com.agropops.api.model.PropriedadeRural> listaPropriedades =
                     mapper.readValue(propriedadesJson, new TypeReference<List<br.com.agropops.api.model.PropriedadeRural>>(){});
 
-            // Vincula o produtor a cada uma das propriedades criadas
             for (br.com.agropops.api.model.PropriedadeRural p : listaPropriedades) {
                 p.setProdutor(produtor);
+                produtor.getPropriedades().add(p);
             }
-            produtor.setPropriedades(listaPropriedades);
 
-            // Transforma o arquivo .pfx em bytes e processa a senha (Mantido igual)
             if (certificado != null && !certificado.isEmpty()) {
                 byte[] bytesCertificado = certificado.getBytes();
                 produtor.setCertificadoPfx(bytesCertificado);
@@ -84,7 +92,6 @@ public class ProdutorController {
                 try {
                     Date validade = certificadoService.extrairValidade(bytesCertificado, senhaCertificado);
                     produtor.setValidadeCertificado(validade);
-                    System.out.println("✅ Certificado válido! Expira em: " + validade);
                 } catch (Exception e) {
                     return ResponseEntity.badRequest().body("Senha do certificado incorreta ou arquivo inválido.");
                 }
@@ -96,6 +103,20 @@ public class ProdutorController {
         } catch (Exception e) {
             return ResponseEntity.internalServerError().body("Erro interno: " + e.getMessage());
         }
+    }
+
+    // DESVINCULAR DA CARTEIRA ---
+    @PutMapping("/desvincular/{id}")
+    @Transactional
+    public ResponseEntity<?> desvincularProdutor(@PathVariable Long id) {
+        Optional<Produtor> produtorOpt = produtorRepository.findById(id);
+        if (produtorOpt.isPresent()) {
+            Produtor produtor = produtorOpt.get();
+            produtor.setContador(null); // O produtor sai da carteira, mas continua no sistema
+            produtorRepository.save(produtor);
+            return ResponseEntity.ok().build();
+        }
+        return ResponseEntity.notFound().build();
     }
 
     // ROTA 2: Listar todos os Produtores do Contador Logado

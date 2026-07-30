@@ -2,6 +2,7 @@ package br.com.agropops.api.controller;
 
 import br.com.agropops.api.dto.ItemNotaDTO;
 import br.com.agropops.api.dto.NotaFiscalDTO;
+import br.com.agropops.api.dto.ParcelaNotaDTO;
 import br.com.agropops.api.model.NotaFiscal;
 import br.com.agropops.api.repository.NotaFiscalRepository;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -206,7 +207,35 @@ public class NotaFiscalController {
             }).collect(Collectors.toList());
 
             dto.setItens(itensDTO);
+            // Mapeamento de Parcelas
+            List<ParcelaNotaDTO> parcelasDTO = nota.getParcelas().stream().map(p -> {
+                ParcelaNotaDTO pDTO = new ParcelaNotaDTO();
+                pDTO.setId(p.getId());
+                pDTO.setNumeroParcela(p.getNumeroParcela());
+                pDTO.setDataVencimento(p.getDataVencimento());
+                pDTO.setValor(p.getValor());
+                return pDTO;
+            }).collect(Collectors.toList());
+
+            dto.setParcelas(parcelasDTO);
+
             return ResponseEntity.ok(dto);
+        }).orElse(ResponseEntity.notFound().build());
+    }
+
+    @PutMapping("/atualizar-parcelas/{notaId}")
+    @Transactional
+    public ResponseEntity<?> atualizarParcelas(@PathVariable Long notaId, @RequestBody List<ParcelaNotaDTO> parcelasDTO) {
+        return notaFiscalRepository.findById(notaId).map(nota -> {
+            for (ParcelaNotaDTO dto : parcelasDTO) {
+                // Encontra a parcela correspondente dentro da nota e atualiza a data de vencimento
+                nota.getParcelas().stream()
+                        .filter(p -> p.getId().equals(dto.getId()))
+                        .findFirst()
+                        .ifPresent(p -> p.setDataVencimento(dto.getDataVencimento()));
+            }
+            notaFiscalRepository.save(nota); // Salva a nota com a cascata de alterações
+            return ResponseEntity.ok("Datas de vencimento atualizadas com sucesso.");
         }).orElse(ResponseEntity.notFound().build());
     }
 }

@@ -1,10 +1,6 @@
 package br.com.agropops.api.service;
 
-import br.com.agropops.api.model.ItemNota;
-import br.com.agropops.api.model.NotaFiscal;
-import br.com.agropops.api.model.Produtor;
-import br.com.agropops.api.model.PropriedadeRural;
-import br.com.agropops.api.model.RegraNCM;
+import br.com.agropops.api.model.*;
 import br.com.agropops.api.repository.NotaFiscalRepository;
 import br.com.agropops.api.repository.ProdutorRepository;
 import br.com.agropops.api.repository.RegraNCMRepository;
@@ -219,6 +215,43 @@ public class SefazXmlService {
             }
 
             nota.setValorTotal(valorTotalAjustado);
+
+            org.w3c.dom.NodeList dupNodes = doc.getElementsByTagName("dup");
+
+            if (dupNodes.getLength() > 0) {
+                // A nota possui parcelamento explícito no XML
+                for (int k = 0; k < dupNodes.getLength(); k++) {
+                    org.w3c.dom.Element dup = (org.w3c.dom.Element) dupNodes.item(k);
+
+                    String nDup = dup.getElementsByTagName("nDup").item(0).getTextContent();
+                    String dVencStr = dup.getElementsByTagName("dVenc").item(0).getTextContent();
+                    String vDupStr = dup.getElementsByTagName("vDup").item(0).getTextContent();
+
+                    ParcelaNota parcela = new ParcelaNota();
+                    parcela.setNumeroParcela(nDup);
+                    parcela.setDataVencimento(LocalDate.parse(dVencStr));
+
+                    BigDecimal vDup = new BigDecimal(vDupStr);
+                    // Se for uma nota de devolução total, invertemos a parcela
+                    if (valorTotalAjustado.compareTo(BigDecimal.ZERO) < 0) {
+                        vDup = vDup.negate();
+                    }
+
+                    parcela.setValor(vDup);
+                    parcela.setNotaFiscal(nota);
+                    nota.getParcelas().add(parcela);
+                }
+            } else {
+                // A nota é À Vista ou o XML não detalhou a cobrança.
+                // Cria 1 parcela única projetada para o mesmo dia da emissão.
+                ParcelaNota parcela = new ParcelaNota();
+                parcela.setNumeroParcela("001");
+                parcela.setDataVencimento(dataEmissao);
+                parcela.setValor(valorTotalAjustado);
+                parcela.setNotaFiscal(nota);
+                nota.getParcelas().add(parcela);
+            }
+
             return nota;
         } catch (Exception e) {
             return null;

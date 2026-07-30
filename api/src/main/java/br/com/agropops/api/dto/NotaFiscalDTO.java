@@ -15,4 +15,5 @@ public class NotaFiscalDTO {
     private String empresaEnvolvida;
     private String chaveAcessoReferencia;
     private List<ItemNotaDTO> itens;
+    private List<ParcelaNotaDTO> parcelas;
 }

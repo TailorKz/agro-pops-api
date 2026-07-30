@@ -9,6 +9,8 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+import java.util.HashSet;
 
 @Getter
 @Setter
@@ -47,7 +49,12 @@ public class NotaFiscal {
     @JoinColumn(name = "propriedade_rural_id")
     private PropriedadeRural propriedadeRural;
 
-    // Relação vários itens
+
+    // Relacionamento com os itens da nota (Regime de Competência)
     @OneToMany(mappedBy = "notaFiscal", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<ItemNota> itens = new ArrayList<>();
+    private Set<ItemNota> itens = new HashSet<>();
+
+    // Relacionamento com as parcelas/financeiro (Regime de Caixa)
+    @OneToMany(mappedBy = "notaFiscal", cascade = CascadeType.ALL, orphanRemoval = true)
+    private Set<ParcelaNota> parcelas = new HashSet<>();
 }
