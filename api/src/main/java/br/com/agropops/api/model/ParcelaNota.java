@@ -15,7 +15,8 @@ import java.time.LocalDate;
 public class ParcelaNota {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "parcela_seq")
+    @SequenceGenerator(name = "parcela_seq", sequenceName = "parcela_seq", allocationSize = 50)
     private Long id;
 
     private String numeroParcela; // Ex: 001, 002, 1/3, etc.

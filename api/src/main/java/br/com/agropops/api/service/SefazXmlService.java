@@ -54,28 +54,39 @@ public class SefazXmlService {
         int ignoradas = 0;
         int falhas = 0;
 
-        for (MultipartFile arquivo : arquivos) {
-            try {
-                Document doc = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(arquivo.getInputStream());
-                NotaFiscal notaProcessada = processarNotaNaMemoria(doc, produtor, mapaRegras, chavesExistentes, propriedadeFallbackId);
+        try {
 
-                if (notaProcessada != null) {
-                    notasParaSalvar.add(notaProcessada);
-                    chavesExistentes.add(notaProcessada.getChaveAcesso());
-                } else {
-                    // A nota já existia no Set de chaves do banco e retornou nula
-                    ignoradas++;
+            DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+            // Desabilita validações desnecessárias da internet para acelerar a leitura
+            factory.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
+            javax.xml.parsers.DocumentBuilder builder = factory.newDocumentBuilder();
+
+            for (MultipartFile arquivo : arquivos) {
+                try {
+                    Document doc = builder.parse(arquivo.getInputStream());
+
+                    NotaFiscal notaProcessada = processarNotaNaMemoria(doc, produtor, mapaRegras, chavesExistentes, propriedadeFallbackId);
+
+                    if (notaProcessada != null) {
+                        notasParaSalvar.add(notaProcessada);
+                        chavesExistentes.add(notaProcessada.getChaveAcesso());
+                    } else {
+                        ignoradas++;
+                    }
+                } catch (Exception e) {
+                    System.out.println("Ficheiro ignorado (Inválido): " + arquivo.getOriginalFilename());
+                    falhas++;
                 }
-            } catch (Exception e) {
-                System.out.println("Ficheiro ignorado (Inválido): " + arquivo.getOriginalFilename());
-                falhas++;
             }
+        } catch (Exception e) {
+            return "Erro crítico ao inicializar o leitor de XML: " + e.getMessage();
         }
 
         if (!notasParaSalvar.isEmpty()) {
             notaRepository.saveAll(notasParaSalvar);
         }
 
+        // Monta o relatório para o Frontend
         StringBuilder relatorio = new StringBuilder();
         relatorio.append("Processamento concluído: ").append(notasParaSalvar.size()).append(" notas importadas.");
 

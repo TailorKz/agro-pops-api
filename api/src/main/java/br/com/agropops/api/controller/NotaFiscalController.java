@@ -72,6 +72,7 @@ public class NotaFiscalController {
                 itemDTO.setNcm(item.getNcm());
                 itemDTO.setValor(item.getValor());
                 itemDTO.setIsDedutivel(item.getIsDedutivel());
+                itemDTO.setCfop(item.getCfop());
                 return itemDTO;
             }).collect(Collectors.toList());
 
@@ -205,6 +206,7 @@ public class NotaFiscalController {
                 itemDTO.setNcm(item.getNcm());
                 itemDTO.setValor(item.getValor());
                 itemDTO.setIsDedutivel(item.getIsDedutivel());
+                itemDTO.setCfop(item.getCfop());
                 return itemDTO;
             }).collect(Collectors.toList());
 
