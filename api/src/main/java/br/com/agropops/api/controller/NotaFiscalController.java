@@ -4,6 +4,7 @@ import br.com.agropops.api.dto.ItemNotaDTO;
 import br.com.agropops.api.dto.NotaFiscalDTO;
 import br.com.agropops.api.dto.ParcelaNotaDTO;
 import br.com.agropops.api.model.NotaFiscal;
+import br.com.agropops.api.model.ParcelaNota;
 import br.com.agropops.api.repository.NotaFiscalRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -111,12 +112,13 @@ public class NotaFiscalController {
     @PostMapping("/importar/{produtorId}")
     public ResponseEntity<String> importarXml(
             @PathVariable Long produtorId,
-            @RequestParam(value = "propriedadeFallbackId", required = false) Long propriedadeFallbackId, // <-- NOVO PARÂMETRO AQUI
+            @RequestParam(value = "propriedadeFallbackId", required = false) Long propriedadeFallbackId,
             @RequestParam("arquivos") List<MultipartFile> arquivos) {
 
+        // Agora o service devolve a String completa do relatório
+        String relatorio = sefazXmlService.importarNotas(produtorId, propriedadeFallbackId, arquivos);
 
-        int importadas = sefazXmlService.importarNotas(produtorId, propriedadeFallbackId, arquivos);
-        return ResponseEntity.ok("Sucesso! " + importadas + " novas notas foram importadas.");
+        return ResponseEntity.ok(relatorio);
     }
 
     @PostMapping("/manifestar/{produtorId}/{chaveAcesso}")
@@ -227,15 +229,34 @@ public class NotaFiscalController {
     @Transactional
     public ResponseEntity<?> atualizarParcelas(@PathVariable Long notaId, @RequestBody List<ParcelaNotaDTO> parcelasDTO) {
         return notaFiscalRepository.findById(notaId).map(nota -> {
+
+            // 1. Remove do banco as parcelas que o usuário deletou na tela (clicando na lixeira)
+            nota.getParcelas().removeIf(p -> parcelasDTO.stream()
+                    .noneMatch(dto -> dto.getId() != null && dto.getId().equals(p.getId())));
+
+            // 2. Atualiza as existentes ou Adiciona as novas
             for (ParcelaNotaDTO dto : parcelasDTO) {
-                // Encontra a parcela correspondente dentro da nota e atualiza a data de vencimento
-                nota.getParcelas().stream()
-                        .filter(p -> p.getId().equals(dto.getId()))
-                        .findFirst()
-                        .ifPresent(p -> p.setDataVencimento(dto.getDataVencimento()));
+                if (dto.getId() != null) {
+                    nota.getParcelas().stream()
+                            .filter(p -> p.getId().equals(dto.getId()))
+                            .findFirst()
+                            .ifPresent(p -> {
+                                p.setDataVencimento(dto.getDataVencimento());
+                                p.setValor(dto.getValor()); // Permite alterar o valor
+                                p.setNumeroParcela(dto.getNumeroParcela());
+                            });
+                } else {
+                    // Se não tem ID, é uma parcela NOVA adicionada manualmente pelo contador
+                    ParcelaNota nova = new ParcelaNota();
+                    nova.setNumeroParcela(dto.getNumeroParcela());
+                    nova.setDataVencimento(dto.getDataVencimento());
+                    nova.setValor(dto.getValor());
+                    nova.setNotaFiscal(nota);
+                    nota.getParcelas().add(nova);
+                }
             }
-            notaFiscalRepository.save(nota); // Salva a nota com a cascata de alterações
-            return ResponseEntity.ok("Datas de vencimento atualizadas com sucesso.");
+            notaFiscalRepository.save(nota);
+            return ResponseEntity.ok("Dados atualizados com sucesso.");
         }).orElse(ResponseEntity.notFound().build());
     }
 }

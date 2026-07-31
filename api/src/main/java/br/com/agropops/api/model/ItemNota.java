@@ -24,7 +24,11 @@ public class ItemNota {
 
     private BigDecimal valor;
 
-    private Boolean isDedutivel; // O controle individual por item
+    private Boolean isDedutivel;
+
+    @Column(length = 4)
+    private String cfop;
+
 
     @ManyToOne
     @JoinColumn(name = "nota_fiscal_id", nullable = false)

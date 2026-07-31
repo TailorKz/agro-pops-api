@@ -42,7 +42,7 @@ public class SefazXmlService {
     );
 
     @Transactional
-    public int importarNotas(Long produtorId, Long propriedadeFallbackId, List<MultipartFile> arquivos) { // <-- Assinatura corrigida!
+    public String importarNotas(Long produtorId, Long propriedadeFallbackId, List<MultipartFile> arquivos) {
         Produtor produtor = produtorRepository.findById(produtorId).orElseThrow();
         List<RegraNCM> regras = regraRepository.findByContadorId(produtor.getContador().getId());
         Map<String, Boolean> mapaRegras = regras.stream()
@@ -51,23 +51,42 @@ public class SefazXmlService {
         Set<String> chavesExistentes = notaRepository.findChavesAcessoByProdutorId(produtorId);
         List<NotaFiscal> notasParaSalvar = new ArrayList<>();
 
+        int ignoradas = 0;
+        int falhas = 0;
+
         for (MultipartFile arquivo : arquivos) {
             try {
                 Document doc = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(arquivo.getInputStream());
                 NotaFiscal notaProcessada = processarNotaNaMemoria(doc, produtor, mapaRegras, chavesExistentes, propriedadeFallbackId);
+
                 if (notaProcessada != null) {
                     notasParaSalvar.add(notaProcessada);
                     chavesExistentes.add(notaProcessada.getChaveAcesso());
+                } else {
+                    // A nota já existia no Set de chaves do banco e retornou nula
+                    ignoradas++;
                 }
             } catch (Exception e) {
                 System.out.println("Ficheiro ignorado (Inválido): " + arquivo.getOriginalFilename());
+                falhas++;
             }
         }
 
         if (!notasParaSalvar.isEmpty()) {
             notaRepository.saveAll(notasParaSalvar);
         }
-        return notasParaSalvar.size();
+
+        StringBuilder relatorio = new StringBuilder();
+        relatorio.append("Processamento concluído: ").append(notasParaSalvar.size()).append(" notas importadas.");
+
+        if (ignoradas > 0) {
+            relatorio.append(" ").append(ignoradas).append(" ignoradas (já existiam).");
+        }
+        if (falhas > 0) {
+            relatorio.append(" ").append(falhas).append(" falharam (arquivo inválido).");
+        }
+
+        return relatorio.toString();
     }
 
     @Transactional
@@ -206,6 +225,7 @@ public class SefazXmlService {
                 ItemNota item = new ItemNota();
                 item.setDescricao(nomeProduto);
                 item.setNcm(ncmProduto);
+                item.setCfop(cfop);
                 item.setValor(valorProduto);
                 item.setIsDedutivel(isDedutivel);
                 item.setNotaFiscal(nota);

@@ -10,4 +10,5 @@ public class ItemNotaDTO {
     private String ncm;
     private BigDecimal valor;
     private Boolean isDedutivel;
+    private String cfop;
 }

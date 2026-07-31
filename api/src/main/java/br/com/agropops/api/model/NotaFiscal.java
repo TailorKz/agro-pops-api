@@ -15,7 +15,10 @@ import java.util.HashSet;
 @Getter
 @Setter
 @Entity
-@Table(name = "notas_fiscais")
+// ADICIONA A REGRA COMPOSTA NA TABELA
+@Table(name = "notas_fiscais", uniqueConstraints = {
+        @UniqueConstraint(columnNames = {"chave_acesso", "produtor_id"})
+})
 public class NotaFiscal {
 
     @Id
@@ -23,7 +26,8 @@ public class NotaFiscal {
     @SequenceGenerator(name = "nota_seq", sequenceName = "nota_seq", allocationSize = 50)
     private Long id;
 
-    @Column(unique = true, length = 44)
+
+    @Column(length = 44)
     private String chaveAcesso;
 
     private String numero;

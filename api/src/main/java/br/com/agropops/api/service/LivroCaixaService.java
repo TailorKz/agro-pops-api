@@ -64,7 +64,10 @@ public class LivroCaixaService {
                             "NFE-" + parcela.getId(), // Usa o ID da Parcela
                             parcela.getDataVencimento(), // Usa a data do pagamento
                             "NF " + nota.getNumero(),
-                            "NF " + nota.getNumero() + " - Parc " + parcela.getNumeroParcela() + " - " + nota.getEmpresaEnvolvida(), // Histórico limpo
+                            // =======================================================
+                            // TEXTO INTELIGENTE: Inclui a parcela atual / total de parcelas
+                            // =======================================================
+                            "NF " + nota.getNumero() + " - Parc " + parcela.getNumeroParcela() + "/" + nota.getParcelas().size() + " - " + nota.getEmpresaEnvolvida(),
                             "NFE",
                             nota.getTipo(),
                             parcela.getValor(),
