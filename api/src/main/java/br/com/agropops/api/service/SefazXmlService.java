@@ -4,6 +4,7 @@ import br.com.agropops.api.model.*;
 import br.com.agropops.api.repository.NotaFiscalRepository;
 import br.com.agropops.api.repository.ProdutorRepository;
 import br.com.agropops.api.repository.RegraNCMRepository;
+import br.com.agropops.api.repository.RegraGlobalRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -33,6 +34,9 @@ public class SefazXmlService {
     @Autowired
     private RegraNCMRepository regraRepository;
 
+    @Autowired
+    private RegraGlobalRepository regraGlobalRepository;
+
     private static final Set<String> CFOPS_DEVOLUCAO_VENDA = Set.of(
             "1201", "1202", "1410", "1411", "2201", "2202", "2410", "2411"
     );
@@ -44,9 +48,20 @@ public class SefazXmlService {
     @Transactional
     public String importarNotas(Long produtorId, Long propriedadeFallbackId, List<MultipartFile> arquivos) {
         Produtor produtor = produtorRepository.findById(produtorId).orElseThrow();
+
+        // 1. REGRAS ESPECÍFICAS DO CONTADOR
         List<RegraNCM> regras = regraRepository.findByContadorId(produtor.getContador().getId());
         Map<String, Boolean> mapaRegras = regras.stream()
                 .collect(Collectors.toMap(RegraNCM::getNcm, RegraNCM::getIsDedutivel, (r1, r2) -> r1));
+
+        // 2. REGRAS GLOBAIS DA PLATAFORMA (Carregadas uma única vez para máxima performance)
+        List<RegraGlobal> globais = regraGlobalRepository.findAll();
+        Map<String, RegraGlobal> mapaGlobaisNcm = globais.stream()
+                .filter(r -> r.getTipo().equals("NCM"))
+                .collect(Collectors.toMap(RegraGlobal::getCodigo, r -> r, (r1, r2) -> r1));
+        Map<String, RegraGlobal> mapaGlobaisCfop = globais.stream()
+                .filter(r -> r.getTipo().equals("CFOP"))
+                .collect(Collectors.toMap(RegraGlobal::getCodigo, r -> r, (r1, r2) -> r1));
 
         Set<String> chavesExistentes = notaRepository.findChavesAcessoByProdutorId(produtorId);
         List<NotaFiscal> notasParaSalvar = new ArrayList<>();
@@ -55,7 +70,6 @@ public class SefazXmlService {
         int falhas = 0;
 
         try {
-
             DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
             // Desabilita validações desnecessárias da internet para acelerar a leitura
             factory.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
@@ -65,7 +79,8 @@ public class SefazXmlService {
                 try {
                     Document doc = builder.parse(arquivo.getInputStream());
 
-                    NotaFiscal notaProcessada = processarNotaNaMemoria(doc, produtor, mapaRegras, chavesExistentes, propriedadeFallbackId);
+                    // Passamos os mapas de regras todos prontos para a função
+                    NotaFiscal notaProcessada = processarNotaNaMemoria(doc, produtor, mapaRegras, mapaGlobaisNcm, mapaGlobaisCfop, chavesExistentes, propriedadeFallbackId);
 
                     if (notaProcessada != null) {
                         notasParaSalvar.add(notaProcessada);
@@ -107,13 +122,18 @@ public class SefazXmlService {
             Map<String, Boolean> mapaRegras = regras.stream()
                     .collect(Collectors.toMap(RegraNCM::getNcm, RegraNCM::getIsDedutivel, (r1, r2) -> r1));
 
+            // Carrega regras globais
+            List<RegraGlobal> globais = regraGlobalRepository.findAll();
+            Map<String, RegraGlobal> mapaGlobaisNcm = globais.stream().filter(r -> r.getTipo().equals("NCM")).collect(Collectors.toMap(RegraGlobal::getCodigo, r -> r, (r1, r2) -> r1));
+            Map<String, RegraGlobal> mapaGlobaisCfop = globais.stream().filter(r -> r.getTipo().equals("CFOP")).collect(Collectors.toMap(RegraGlobal::getCodigo, r -> r, (r1, r2) -> r1));
+
             Set<String> chavesExistentes = notaRepository.findChavesAcessoByProdutorId(produtor.getId());
 
             InputStream targetStream = new ByteArrayInputStream(xmlContent.getBytes());
             Document doc = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(targetStream);
 
             // Notas do Robô Automático não têm fallback de tela, enviamos 'null'
-            NotaFiscal notaProcessada = processarNotaNaMemoria(doc, produtor, mapaRegras, chavesExistentes, null);
+            NotaFiscal notaProcessada = processarNotaNaMemoria(doc, produtor, mapaRegras, mapaGlobaisNcm, mapaGlobaisCfop, chavesExistentes, null);
 
             if (notaProcessada != null) {
                 notaRepository.save(notaProcessada);
@@ -126,7 +146,7 @@ public class SefazXmlService {
         }
     }
 
-    private NotaFiscal processarNotaNaMemoria(Document doc, Produtor produtor, Map<String, Boolean> mapaRegras, Set<String> chavesExistentes, Long propriedadeFallbackId) {
+    private NotaFiscal processarNotaNaMemoria(Document doc, Produtor produtor, Map<String, Boolean> mapaRegras, Map<String, RegraGlobal> mapaGlobaisNcm, Map<String, RegraGlobal> mapaGlobaisCfop, Set<String> chavesExistentes, Long propriedadeFallbackId) {
         try {
             String idAtributo = doc.getElementsByTagName("infNFe").item(0).getAttributes().getNamedItem("Id").getNodeValue();
             String chaveAcesso = idAtributo.replace("NFe", "");
@@ -211,6 +231,7 @@ public class SefazXmlService {
             BigDecimal valorTotalAjustado = BigDecimal.ZERO;
             org.w3c.dom.NodeList detNodes = doc.getElementsByTagName("det");
 
+            // LAÇO DE ITENS: AQUI AS VARIÁVEIS EXISTEM PARA SEREM AVALIADAS
             for (int i = 0; i < detNodes.getLength(); i++) {
                 org.w3c.dom.Element det = (org.w3c.dom.Element) detNodes.item(i);
                 org.w3c.dom.Element prod = (org.w3c.dom.Element) det.getElementsByTagName("prod").item(0);
@@ -226,8 +247,34 @@ public class SefazXmlService {
                 String valorProdutoStr = prod.getElementsByTagName("vProd").item(0).getTextContent();
                 BigDecimal valorProduto = new BigDecimal(valorProdutoStr);
 
-                boolean isDedutivel = tipo.equals("SAIDA") && mapaRegras.getOrDefault(ncmProduto, false);
+                // --- AQUI ENTRA A INTELIGÊNCIA TRIBUTÁRIA GLOBAL E DO CONTADOR ---
+                boolean isDedutivel = false;
+                if (tipo.equals("SAIDA")) {
+                    // 1. Regra específica do Contador (prioridade máxima)
+                    if (mapaRegras.containsKey(ncmProduto)) {
+                        isDedutivel = mapaRegras.get(ncmProduto);
+                    } else {
+                        // 2. Regras Globais
+                        String sufixoCfop = cfop != null && cfop.length() >= 3 ? cfop.substring(cfop.length() - 3) : "";
+                        String capNcm = ncmProduto != null && ncmProduto.length() >= 2 ? ncmProduto.substring(0, 2) : "";
 
+                        RegraGlobal regraCfop = mapaGlobaisCfop.get(sufixoCfop);
+                        RegraGlobal regraNcm = mapaGlobaisNcm.get(capNcm);
+
+                        if (regraCfop != null && !regraCfop.getIsDedutivel()) {
+                            // Se o CFOP for um bloqueio global (ex: Devoluções/Demonstração)
+                            isDedutivel = false;
+                        } else if (regraNcm != null) {
+                            // Se o CFOP permite e o NCM for agrícola (ex: Cereais)
+                            isDedutivel = regraNcm.getIsDedutivel();
+                        } else if (regraCfop != null && regraCfop.getIsDedutivel()) {
+                            // Se o sistema não conhecia o NCM, mas o CFOP indica compra tributária (Ex: Compra de Máquina Ativo Imobilizado)
+                            isDedutivel = true;
+                        }
+                    }
+                }
+
+                // Ajuste de valores para Devoluções
                 if (CFOPS_DEVOLUCAO_VENDA.contains(cfop) || CFOPS_DEVOLUCAO_COMPRA.contains(cfop)) {
                     valorProduto = valorProduto.negate();
                     nomeProduto = "[DEVOLUÇÃO] " + nomeProduto;

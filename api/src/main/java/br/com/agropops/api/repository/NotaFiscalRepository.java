@@ -72,8 +72,9 @@ public interface NotaFiscalRepository extends JpaRepository<NotaFiscal, Long> {
     // Traz a nota com seus itens e parcelas filtrando pelo ANO DO VENCIMENTO
     @Query("SELECT DISTINCT n FROM NotaFiscal n " +
             "LEFT JOIN FETCH n.itens " +
-            "LEFT JOIN FETCH n.parcelas p " +
-            "WHERE n.produtor.id = :produtorId AND EXTRACT(YEAR FROM p.dataVencimento) = :ano")
+            "LEFT JOIN FETCH n.parcelas " +
+            "WHERE n.produtor.id = :produtorId " +
+            "AND EXISTS (SELECT 1 FROM ParcelaNota p2 WHERE p2.notaFiscal = n AND EXTRACT(YEAR FROM p2.dataVencimento) = :ano)")
     List<NotaFiscal> findByProdutorIdAndAnoVencimento(
             @Param("produtorId") Long produtorId,
             @Param("ano") int ano);
