@@ -247,28 +247,47 @@ public class SefazXmlService {
                 String valorProdutoStr = prod.getElementsByTagName("vProd").item(0).getTextContent();
                 BigDecimal valorProduto = new BigDecimal(valorProdutoStr);
 
-                // --- AQUI ENTRA A INTELIGÊNCIA TRIBUTÁRIA GLOBAL E DO CONTADOR ---
+                // INTELIGÊNCIA TRIBUTÁRIA GLOBAL E DO CONTADOR
                 boolean isDedutivel = false;
                 if (tipo.equals("SAIDA")) {
-                    // 1. Regra específica do Contador (prioridade máxima)
-                    if (mapaRegras.containsKey(ncmProduto)) {
+
+                    // 1. Regra específica do Contador (prioridade máxima) - Cascata (8, 4 ou 2 dígitos)
+                    if (ncmProduto != null && mapaRegras.containsKey(ncmProduto)) {
                         isDedutivel = mapaRegras.get(ncmProduto);
+                    } else if (ncmProduto != null && ncmProduto.length() >= 4 && mapaRegras.containsKey(ncmProduto.substring(0, 4))) {
+                        isDedutivel = mapaRegras.get(ncmProduto.substring(0, 4));
+                    } else if (ncmProduto != null && ncmProduto.length() >= 2 && mapaRegras.containsKey(ncmProduto.substring(0, 2))) {
+                        isDedutivel = mapaRegras.get(ncmProduto.substring(0, 2));
                     } else {
-                        // 2. Regras Globais
-                        String sufixoCfop = cfop != null && cfop.length() >= 3 ? cfop.substring(cfop.length() - 3) : "";
-                        String capNcm = ncmProduto != null && ncmProduto.length() >= 2 ? ncmProduto.substring(0, 2) : "";
+                        // 2. Regras Globais (SaaS)
+                        RegraGlobal regraCfop = null;
+                        if (cfop != null) {
+                            regraCfop = mapaGlobaisCfop.get(cfop); // Tenta o código exato (ex: 5102)
+                            if (regraCfop == null && cfop.length() >= 3) {
+                                regraCfop = mapaGlobaisCfop.get(cfop.substring(cfop.length() - 3)); // Tenta o sufixo (ex: 102)
+                            }
+                        }
 
-                        RegraGlobal regraCfop = mapaGlobaisCfop.get(sufixoCfop);
-                        RegraGlobal regraNcm = mapaGlobaisNcm.get(capNcm);
+                        RegraGlobal regraNcm = null;
+                        if (ncmProduto != null) {
+                            regraNcm = mapaGlobaisNcm.get(ncmProduto); // Tenta 8 dígitos (Item exato)
+                            if (regraNcm == null && ncmProduto.length() >= 4) {
+                                regraNcm = mapaGlobaisNcm.get(ncmProduto.substring(0, 4)); // Tenta 4 dígitos (Posição)
+                            }
+                            if (regraNcm == null && ncmProduto.length() >= 2) {
+                                regraNcm = mapaGlobaisNcm.get(ncmProduto.substring(0, 2)); // Tenta 2 dígitos (Capítulo)
+                            }
+                        }
 
+                        // 3. Tomada de Decisão
                         if (regraCfop != null && !regraCfop.getIsDedutivel()) {
-                            // Se o CFOP for um bloqueio global (ex: Devoluções/Demonstração)
+                            // Se o CFOP for um bloqueio global (ex: Devoluções/Demonstração) -> Bloqueia
                             isDedutivel = false;
                         } else if (regraNcm != null) {
-                            // Se o CFOP permite e o NCM for agrícola (ex: Cereais)
+                            // Se achou uma regra de NCM -> Aplica ela
                             isDedutivel = regraNcm.getIsDedutivel();
                         } else if (regraCfop != null && regraCfop.getIsDedutivel()) {
-                            // Se o sistema não conhecia o NCM, mas o CFOP indica compra tributária (Ex: Compra de Máquina Ativo Imobilizado)
+                            // Se não conhecia o NCM, mas o CFOP indica compra tributária -> Libera
                             isDedutivel = true;
                         }
                     }
