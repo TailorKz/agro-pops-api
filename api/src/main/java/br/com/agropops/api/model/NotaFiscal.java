@@ -30,6 +30,15 @@ public class NotaFiscal {
     @Column(length = 44)
     private String chaveAcesso;
 
+    @Column(length = 100)
+    private String naturezaOperacao;
+
+    @Column(length = 150)
+    private String nomeEmitente;
+
+    @Column(length = 150)
+    private String nomeDestinatario;
+
     private String numero;
 
     private LocalDate dataEmissao;

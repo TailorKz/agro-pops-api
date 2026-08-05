@@ -38,7 +38,7 @@ public class NotaFiscalController {
     @Autowired
     private br.com.agropops.api.repository.ItemNotaRepository itemNotaRepository;
 
-    // --- 1. ENDPOINT LISTAR (AGORA FILTRANDO DATAS CORRETAMENTE) ---
+    // ENDPOINT LISTAR
     @Transactional(readOnly = true)
     @GetMapping("/listar/{produtorId}")
     public ResponseEntity<List<NotaFiscalDTO>> listarNotas(
@@ -61,6 +61,8 @@ public class NotaFiscalController {
             dto.setNumero(nota.getNumero());
             dto.setDataEmissao(nota.getDataEmissao());
             dto.setTipo(nota.getTipo());
+            dto.setChaveAcesso(nota.getChaveAcesso());
+            dto.setNaturezaOperacao(nota.getNaturezaOperacao());
             dto.setValorTotal(nota.getValorTotal());
             dto.setEmpresaEnvolvida(nota.getEmpresaEnvolvida());
             dto.setChaveAcessoReferencia(nota.getChaveAcessoReferencia());
@@ -83,7 +85,7 @@ public class NotaFiscalController {
         return ResponseEntity.ok(notasDTO);
     }
 
-    // --- 2. ENDPOINT DELETAR TODAS (FILTRANDO POR DATA) ---
+    // --- 2. ENDPOINT DELETAR TODAS (COM BULK DELETE DE ALTA PERFORMANCE) ---
     @DeleteMapping("/deletar-todas/{produtorId}")
     @Transactional
     public ResponseEntity<?> deletarNotasDoProdutor(
@@ -94,9 +96,8 @@ public class NotaFiscalController {
         List<NotaFiscal> notas;
 
         if (inicio != null && fim != null) {
-            notas = notaFiscalRepository.findByProdutorIdAndDataEmissaoBetweenOrderByDataEmissaoDesc(produtorId, inicio, fim);
+            notas = notaFiscalRepository.findByProdutorAndDataEmissaoBetween(produtorId, inicio, fim);
         } else {
-            // Se não veio data, apaga TUDO do produtor
             notas = notaFiscalRepository.findByProdutorId(produtorId);
         }
 
@@ -104,11 +105,24 @@ public class NotaFiscalController {
             return ResponseEntity.ok("Não há notas para excluir neste período.");
         }
 
-        notaFiscalRepository.deleteAll(notas);
-        return ResponseEntity.ok(notas.size() + " notas foram apagadas com sucesso.");
+        // Pega apenas os IDs das notas que precisam ser apagadas
+        List<Long> notaIds = notas.stream().map(NotaFiscal::getId).collect(Collectors.toList());
+
+        // Deleta em lotes de 1.000 para não sobrecarregar a memória
+        int tamanhoLote = 1000;
+        for (int i = 0; i < notaIds.size(); i += tamanhoLote) {
+            List<Long> loteIds = notaIds.subList(i, Math.min(i + tamanhoLote, notaIds.size()));
+
+
+            notaFiscalRepository.deleteAllItensByNotaIds(loteIds);
+            notaFiscalRepository.deleteAllParcelasByNotaIds(loteIds);
+
+            notaFiscalRepository.deleteAllNotasByIds(loteIds);
+        }
+
+        return ResponseEntity.ok(notas.size() + " notas foram apagadas com sucesso de forma otimizada.");
     }
 
-    // --- DEMAIS ENDPOINTS CONTINUAM IGUAIS ---
 
     @PostMapping("/importar/{produtorId}")
     public ResponseEntity<String> importarXml(
@@ -120,6 +134,59 @@ public class NotaFiscalController {
         String relatorio = sefazXmlService.importarNotas(produtorId, propriedadeFallbackId, arquivos);
 
         return ResponseEntity.ok(relatorio);
+    }
+
+    @PostMapping("/manual/{produtorId}")
+    @Transactional
+    public ResponseEntity<?> criarNotaManual(@PathVariable Long produtorId, @RequestBody br.com.agropops.api.dto.NotaManualForm form) {
+        var produtorOpt = produtorRepository.findById(produtorId);
+        if (produtorOpt.isEmpty()) return ResponseEntity.badRequest().body("Produtor não encontrado.");
+
+        br.com.agropops.api.model.NotaFiscal nota = new br.com.agropops.api.model.NotaFiscal();
+        nota.setNumero(form.getNumero());
+        nota.setDataEmissao(form.getDataEmissao());
+        nota.setTipo(form.getTipo());
+        nota.setValorTotal(form.getValorTotal());
+        nota.setEmpresaEnvolvida(form.getEmpresaEnvolvida());
+        nota.setProdutor(produtorOpt.get());
+
+        // Vincula a fazenda caso exista
+        if (form.getPropriedadeId() != null) {
+            produtorOpt.get().getPropriedades().stream()
+                    .filter(p -> p.getId().equals(form.getPropriedadeId()))
+                    .findFirst()
+                    .ifPresent(nota::setPropriedadeRural);
+        }
+
+        // Cria 1 Item Genérico para representar a nota em memória e dedutibilidade
+        br.com.agropops.api.model.ItemNota item = new br.com.agropops.api.model.ItemNota();
+        item.setDescricao(form.getTipo().equals("ENTRADA") ? "Venda/Receita Lançada Manualmente" : "Despesa/Insumo Lançado Manualmente");
+        item.setValor(form.getValorTotal());
+        item.setIsDedutivel(form.getIsDedutivel());
+        item.setNotaFiscal(nota);
+        nota.getItens().add(item);
+
+        // Vincula o parcelamento
+        if (form.getParcelas() != null && !form.getParcelas().isEmpty()) {
+            for (br.com.agropops.api.dto.ParcelaNotaDTO dto : form.getParcelas()) {
+                br.com.agropops.api.model.ParcelaNota parcela = new br.com.agropops.api.model.ParcelaNota();
+                parcela.setNumeroParcela(dto.getNumeroParcela());
+                parcela.setDataVencimento(dto.getDataVencimento());
+                parcela.setValor(dto.getValor());
+                parcela.setNotaFiscal(nota);
+                nota.getParcelas().add(parcela);
+            }
+        } else {
+            br.com.agropops.api.model.ParcelaNota parcela = new br.com.agropops.api.model.ParcelaNota();
+            parcela.setNumeroParcela("001");
+            parcela.setDataVencimento(form.getDataEmissao());
+            parcela.setValor(form.getValorTotal());
+            parcela.setNotaFiscal(nota);
+            nota.getParcelas().add(parcela);
+        }
+
+        notaFiscalRepository.save(nota);
+        return ResponseEntity.ok("Documento registrado com sucesso!");
     }
 
     @PostMapping("/manifestar/{produtorId}/{chaveAcesso}")
@@ -195,6 +262,12 @@ public class NotaFiscalController {
             dto.setNumero(nota.getNumero());
             dto.setDataEmissao(nota.getDataEmissao());
             dto.setTipo(nota.getTipo());
+            dto.setNomeEmitente(nota.getNomeEmitente());
+            dto.setNomeDestinatario(nota.getNomeDestinatario());
+            dto.setNomeEmitente(nota.getNomeEmitente());
+            dto.setNomeDestinatario(nota.getNomeDestinatario());
+            dto.setChaveAcesso(nota.getChaveAcesso());
+            dto.setNaturezaOperacao(nota.getNaturezaOperacao());
             dto.setValorTotal(nota.getValorTotal());
             dto.setEmpresaEnvolvida(nota.getEmpresaEnvolvida());
             dto.setChaveAcessoReferencia(nota.getChaveAcessoReferencia());

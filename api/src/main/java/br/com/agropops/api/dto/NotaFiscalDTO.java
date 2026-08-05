@@ -16,4 +16,8 @@ public class NotaFiscalDTO {
     private String chaveAcessoReferencia;
     private List<ItemNotaDTO> itens;
     private List<ParcelaNotaDTO> parcelas;
+    private String chaveAcesso;
+    private String naturezaOperacao;
+    private String nomeEmitente;
+    private String nomeDestinatario;
 }

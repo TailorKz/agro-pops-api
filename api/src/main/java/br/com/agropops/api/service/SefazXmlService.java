@@ -10,8 +10,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 import org.w3c.dom.Document;
-
 import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.parsers.ParserConfigurationException;
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.math.BigDecimal;
@@ -45,16 +45,29 @@ public class SefazXmlService {
             "5201", "5202", "5410", "5411", "6201", "6202", "6410", "6411"
     );
 
+    // ========================================================
+    // MOTOR DE SEGURANÇA XXE (XML External Entity)
+    // ========================================================
+    private DocumentBuilderFactory getSecureDocumentBuilderFactory() throws ParserConfigurationException {
+        DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+        // Blindagem contra XXE (Billion Laughs e leitura de arquivos do SO)
+        factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+        factory.setFeature("http://xml.org/sax/features/external-general-entities", false);
+        factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
+        factory.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
+        factory.setXIncludeAware(false);
+        factory.setExpandEntityReferences(false);
+        return factory;
+    }
+
     @Transactional
     public String importarNotas(Long produtorId, Long propriedadeFallbackId, List<MultipartFile> arquivos) {
         Produtor produtor = produtorRepository.findById(produtorId).orElseThrow();
 
-        // 1. REGRAS ESPECÍFICAS DO CONTADOR
         List<RegraNCM> regras = regraRepository.findByContadorId(produtor.getContador().getId());
         Map<String, Boolean> mapaRegras = regras.stream()
                 .collect(Collectors.toMap(RegraNCM::getNcm, RegraNCM::getIsDedutivel, (r1, r2) -> r1));
 
-        // 2. REGRAS GLOBAIS DA PLATAFORMA (Carregadas uma única vez para máxima performance)
         List<RegraGlobal> globais = regraGlobalRepository.findAll();
         Map<String, RegraGlobal> mapaGlobaisNcm = globais.stream()
                 .filter(r -> r.getTipo().equals("NCM"))
@@ -70,16 +83,11 @@ public class SefazXmlService {
         int falhas = 0;
 
         try {
-            DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
-            // Desabilita validações desnecessárias da internet para acelerar a leitura
-            factory.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
-            javax.xml.parsers.DocumentBuilder builder = factory.newDocumentBuilder();
+            javax.xml.parsers.DocumentBuilder builder = getSecureDocumentBuilderFactory().newDocumentBuilder();
 
             for (MultipartFile arquivo : arquivos) {
                 try {
                     Document doc = builder.parse(arquivo.getInputStream());
-
-                    // Passamos os mapas de regras todos prontos para a função
                     NotaFiscal notaProcessada = processarNotaNaMemoria(doc, produtor, mapaRegras, mapaGlobaisNcm, mapaGlobaisCfop, chavesExistentes, propriedadeFallbackId);
 
                     if (notaProcessada != null) {
@@ -101,16 +109,10 @@ public class SefazXmlService {
             notaRepository.saveAll(notasParaSalvar);
         }
 
-        // Monta o relatório para o Frontend
         StringBuilder relatorio = new StringBuilder();
         relatorio.append("Processamento concluído: ").append(notasParaSalvar.size()).append(" notas importadas.");
-
-        if (ignoradas > 0) {
-            relatorio.append(" ").append(ignoradas).append(" ignoradas (já existiam).");
-        }
-        if (falhas > 0) {
-            relatorio.append(" ").append(falhas).append(" falharam (arquivo inválido).");
-        }
+        if (ignoradas > 0) relatorio.append(" ").append(ignoradas).append(" ignoradas (já existiam).");
+        if (falhas > 0) relatorio.append(" ").append(falhas).append(" falharam (arquivo inválido).");
 
         return relatorio.toString();
     }
@@ -122,17 +124,14 @@ public class SefazXmlService {
             Map<String, Boolean> mapaRegras = regras.stream()
                     .collect(Collectors.toMap(RegraNCM::getNcm, RegraNCM::getIsDedutivel, (r1, r2) -> r1));
 
-            // Carrega regras globais
             List<RegraGlobal> globais = regraGlobalRepository.findAll();
             Map<String, RegraGlobal> mapaGlobaisNcm = globais.stream().filter(r -> r.getTipo().equals("NCM")).collect(Collectors.toMap(RegraGlobal::getCodigo, r -> r, (r1, r2) -> r1));
             Map<String, RegraGlobal> mapaGlobaisCfop = globais.stream().filter(r -> r.getTipo().equals("CFOP")).collect(Collectors.toMap(RegraGlobal::getCodigo, r -> r, (r1, r2) -> r1));
-
             Set<String> chavesExistentes = notaRepository.findChavesAcessoByProdutorId(produtor.getId());
 
             InputStream targetStream = new ByteArrayInputStream(xmlContent.getBytes());
-            Document doc = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(targetStream);
+            Document doc = getSecureDocumentBuilderFactory().newDocumentBuilder().parse(targetStream);
 
-            // Notas do Robô Automático não têm fallback de tela, enviamos 'null'
             NotaFiscal notaProcessada = processarNotaNaMemoria(doc, produtor, mapaRegras, mapaGlobaisNcm, mapaGlobaisCfop, chavesExistentes, null);
 
             if (notaProcessada != null) {
@@ -160,9 +159,13 @@ public class SefazXmlService {
                     ? doc.getElementsByTagName("dhEmi").item(0).getTextContent()
                     : doc.getElementsByTagName("dEmi").item(0).getTextContent();
             LocalDate dataEmissao = LocalDate.parse(dataTexto.substring(0, 10));
-
             String tpNF = doc.getElementsByTagName("tpNF").item(0).getTextContent();
-            String tipo = tpNF.equals("0") ? "ENTRADA" : "SAIDA";
+
+            // --- EXTRAÇÃO DA NATUREZA DA OPERAÇÃO ---
+            String naturezaOperacao = "Não informada";
+            if (doc.getElementsByTagName("natOp").getLength() > 0) {
+                naturezaOperacao = doc.getElementsByTagName("natOp").item(0).getTextContent().toUpperCase();
+            }
 
             // --- INTELIGÊNCIA: EXTRAÇÃO DA IE E NOME DO EMITENTE/DESTINATÁRIO ---
             String emitenteNome = "Desconhecido";
@@ -181,7 +184,53 @@ public class SefazXmlService {
                 if(dest.getElementsByTagName("IE").getLength() > 0) ieDestinatario = dest.getElementsByTagName("IE").item(0).getTextContent().replaceAll("\\D", "");
             }
 
-            String empresaEnvolvida = tipo.equals("SAIDA") ? emitenteNome : destinatarioNome;
+            // ========================================================
+            // A MÁGICA DO LCDPR: ESPELHAMENTO CONTÁBIL E DEVOLUÇÕES
+            // ========================================================
+
+            // 1. Descobrir se o Produtor é o Emitente cruzando a IE
+            boolean isEmitenteProdutor = false;
+            for (PropriedadeRural prop : produtor.getPropriedades()) {
+                String ieFazenda = prop.getInscricaoEstadual();
+                if (ieFazenda != null && !ieFazenda.isEmpty()) {
+                    if (ieFazenda.replaceAll("\\D", "").equals(ieEmitente)) {
+                        isEmitenteProdutor = true;
+                        break;
+                    }
+                }
+            }
+
+            boolean isEntradaFisica = tpNF.equals("0");
+            boolean isDevolucao = naturezaOperacao.contains("DEVOLUCAO") ||
+                    naturezaOperacao.contains("DEVOLUÇÃO") ||
+                    naturezaOperacao.contains("RETORNO");
+
+            // 2. Definir o Tipo Financeiro (O que vai pro Livro Caixa)
+            String tipo; // ENTRADA (Receita) ou SAIDA (Despesa)
+
+            if (isDevolucao) {
+                if (isEmitenteProdutor) {
+                    // Produtor recebendo devolução de venda -> Anula Receita (ENTRADA)
+                    // Produtor enviando devolução de compra -> Anula Despesa (SAIDA)
+                    tipo = isEntradaFisica ? "ENTRADA" : "SAIDA";
+                } else {
+                    // Loja recebendo devolução de compra do produtor -> Anula Despesa (SAIDA)
+                    // Loja enviando devolução de venda pro produtor -> Anula Receita (ENTRADA)
+                    tipo = isEntradaFisica ? "SAIDA" : "ENTRADA";
+                }
+            } else {
+                if (isEmitenteProdutor) {
+                    // Produtor vendendo (Saída) -> Receita (ENTRADA)
+                    // Produtor comprando de CPF (Entrada) -> Despesa (SAIDA)
+                    tipo = isEntradaFisica ? "SAIDA" : "ENTRADA";
+                } else {
+                    // Loja vendendo pro Produtor (Saída) -> Despesa (SAIDA)
+                    // Loja comprando do Produtor (Entrada) -> Receita (ENTRADA)
+                    tipo = isEntradaFisica ? "ENTRADA" : "SAIDA";
+                }
+            }
+
+            String empresaEnvolvida = isEmitenteProdutor ? destinatarioNome : emitenteNome;
 
             NotaFiscal nota = new NotaFiscal();
             nota.setChaveAcesso(chaveAcesso);
@@ -194,6 +243,9 @@ public class SefazXmlService {
             nota.setChaveAcessoReferencia(chaveAcessoReferencia);
             nota.setDataEmissao(dataEmissao);
             nota.setTipo(tipo);
+            nota.setNaturezaOperacao(naturezaOperacao);
+            nota.setNomeEmitente(emitenteNome);
+            nota.setNomeDestinatario(destinatarioNome);
             nota.setEmpresaEnvolvida(empresaEnvolvida);
             nota.setProdutor(produtor);
 
@@ -201,44 +253,40 @@ public class SefazXmlService {
             // MATCH DE FAZENDA PELA INSCRIÇÃO ESTADUAL (IE)
             // ========================================================
             PropriedadeRural propriedadeDestino = null;
-
             for (PropriedadeRural prop : produtor.getPropriedades()) {
                 String ieFazenda = prop.getInscricaoEstadual();
                 if (ieFazenda != null && !ieFazenda.isEmpty()) {
                     String ieLimpa = ieFazenda.replaceAll("\\D", "");
                     if (ieLimpa.equals(ieEmitente) || ieLimpa.equals(ieDestinatario)) {
                         propriedadeDestino = prop;
-                        System.out.println("✅ MATCH DE IE ENCONTRADO! Nota vinculada à: " + prop.getNome());
+                        System.out.println("  MATCH DE IE ENCONTRADO! Nota vinculada à: " + prop.getNome());
                         break;
                     }
                 }
             }
 
-            // Se o XML não tiver IE ou não bater, usa o Fallback que o contador escolheu na tela
             if (propriedadeDestino == null && propriedadeFallbackId != null) {
                 propriedadeDestino = produtor.getPropriedades().stream()
                         .filter(p -> p.getId().equals(propriedadeFallbackId))
                         .findFirst()
                         .orElse(null);
             }
-            // Se tudo falhar, joga na Propriedade Principal
+
             if (propriedadeDestino == null && !produtor.getPropriedades().isEmpty()) {
                 propriedadeDestino = produtor.getPropriedades().get(0);
             }
             nota.setPropriedadeRural(propriedadeDestino);
-            // ========================================================
 
+            // ========================================================
             BigDecimal valorTotalAjustado = BigDecimal.ZERO;
             org.w3c.dom.NodeList detNodes = doc.getElementsByTagName("det");
 
-            // LAÇO DE ITENS: AQUI AS VARIÁVEIS EXISTEM PARA SEREM AVALIADAS
             for (int i = 0; i < detNodes.getLength(); i++) {
                 org.w3c.dom.Element det = (org.w3c.dom.Element) detNodes.item(i);
                 org.w3c.dom.Element prod = (org.w3c.dom.Element) det.getElementsByTagName("prod").item(0);
 
                 String nomeProduto = prod.getElementsByTagName("xProd").item(0).getTextContent();
                 String ncmProduto = prod.getElementsByTagName("NCM").item(0).getTextContent();
-
                 String cfop = "";
                 if (prod.getElementsByTagName("CFOP").getLength() > 0) {
                     cfop = prod.getElementsByTagName("CFOP").item(0).getTextContent();
@@ -248,9 +296,9 @@ public class SefazXmlService {
                 BigDecimal valorProduto = new BigDecimal(valorProdutoStr);
 
                 // INTELIGÊNCIA TRIBUTÁRIA GLOBAL E DO CONTADOR
-                boolean isDedutivel = false;
-                if (tipo.equals("SAIDA")) {
+                boolean isDedutivel = tipo.equals("ENTRADA");
 
+                if (tipo.equals("SAIDA")) {
                     // 1. Regra específica do Contador (prioridade máxima) - Cascata (8, 4 ou 2 dígitos)
                     if (ncmProduto != null && mapaRegras.containsKey(ncmProduto)) {
                         isDedutivel = mapaRegras.get(ncmProduto);
@@ -261,42 +309,45 @@ public class SefazXmlService {
                     } else {
                         // 2. Regras Globais (SaaS)
                         RegraGlobal regraCfop = null;
-                        if (cfop != null) {
-                            regraCfop = mapaGlobaisCfop.get(cfop); // Tenta o código exato (ex: 5102)
+                        if (cfop != null && !cfop.isEmpty()) {
+                            regraCfop = mapaGlobaisCfop.get(cfop);
                             if (regraCfop == null && cfop.length() >= 3) {
-                                regraCfop = mapaGlobaisCfop.get(cfop.substring(cfop.length() - 3)); // Tenta o sufixo (ex: 102)
+                                regraCfop = mapaGlobaisCfop.get(cfop.substring(cfop.length() - 3));
                             }
                         }
 
                         RegraGlobal regraNcm = null;
-                        if (ncmProduto != null) {
-                            regraNcm = mapaGlobaisNcm.get(ncmProduto); // Tenta 8 dígitos (Item exato)
+                        if (ncmProduto != null && !ncmProduto.isEmpty()) {
+                            regraNcm = mapaGlobaisNcm.get(ncmProduto);
                             if (regraNcm == null && ncmProduto.length() >= 4) {
-                                regraNcm = mapaGlobaisNcm.get(ncmProduto.substring(0, 4)); // Tenta 4 dígitos (Posição)
+                                regraNcm = mapaGlobaisNcm.get(ncmProduto.substring(0, 4));
                             }
                             if (regraNcm == null && ncmProduto.length() >= 2) {
-                                regraNcm = mapaGlobaisNcm.get(ncmProduto.substring(0, 2)); // Tenta 2 dígitos (Capítulo)
+                                regraNcm = mapaGlobaisNcm.get(ncmProduto.substring(0, 2));
                             }
                         }
 
-                        // 3. Tomada de Decisão
+                        // 3. Tomada de Decisão (Com correção de Simples Faturamento)
                         if (regraCfop != null && !regraCfop.getIsDedutivel()) {
-                            // Se o CFOP for um bloqueio global (ex: Devoluções/Demonstração) -> Bloqueia
-                            isDedutivel = false;
+                            // EXCEÇÃO: Se for Simples Faturamento (922) e o NCM for dedutível, o NCM tem prioridade!
+                            if (cfop != null && cfop.endsWith("922") && regraNcm != null && regraNcm.getIsDedutivel()) {
+                                isDedutivel = true;
+                            } else {
+                                // Para os demais bloqueios (Conserto, Armazém), o CFOP bloqueia a nota.
+                                isDedutivel = false;
+                            }
                         } else if (regraNcm != null) {
-                            // Se achou uma regra de NCM -> Aplica ela
                             isDedutivel = regraNcm.getIsDedutivel();
                         } else if (regraCfop != null && regraCfop.getIsDedutivel()) {
-                            // Se não conhecia o NCM, mas o CFOP indica compra tributária -> Libera
                             isDedutivel = true;
                         }
                     }
                 }
 
-                // Ajuste de valores para Devoluções
                 if (CFOPS_DEVOLUCAO_VENDA.contains(cfop) || CFOPS_DEVOLUCAO_COMPRA.contains(cfop)) {
                     valorProduto = valorProduto.negate();
                     nomeProduto = "[DEVOLUÇÃO] " + nomeProduto;
+                    isDedutivel = true; // A devolução sempre entra no Livro para estornar o saldo!
                 }
 
                 ItemNota item = new ItemNota();
@@ -306,20 +357,17 @@ public class SefazXmlService {
                 item.setValor(valorProduto);
                 item.setIsDedutivel(isDedutivel);
                 item.setNotaFiscal(nota);
-
                 nota.getItens().add(item);
+
                 valorTotalAjustado = valorTotalAjustado.add(valorProduto);
             }
 
             nota.setValorTotal(valorTotalAjustado);
-
             org.w3c.dom.NodeList dupNodes = doc.getElementsByTagName("dup");
 
             if (dupNodes.getLength() > 0) {
-                // A nota possui parcelamento explícito no XML
                 for (int k = 0; k < dupNodes.getLength(); k++) {
                     org.w3c.dom.Element dup = (org.w3c.dom.Element) dupNodes.item(k);
-
                     String nDup = dup.getElementsByTagName("nDup").item(0).getTextContent();
                     String dVencStr = dup.getElementsByTagName("dVenc").item(0).getTextContent();
                     String vDupStr = dup.getElementsByTagName("vDup").item(0).getTextContent();
@@ -329,18 +377,14 @@ public class SefazXmlService {
                     parcela.setDataVencimento(LocalDate.parse(dVencStr));
 
                     BigDecimal vDup = new BigDecimal(vDupStr);
-                    // Se for uma nota de devolução total, invertemos a parcela
                     if (valorTotalAjustado.compareTo(BigDecimal.ZERO) < 0) {
                         vDup = vDup.negate();
                     }
-
                     parcela.setValor(vDup);
                     parcela.setNotaFiscal(nota);
                     nota.getParcelas().add(parcela);
                 }
             } else {
-                // A nota é À Vista ou o XML não detalhou a cobrança.
-                // Cria 1 parcela única projetada para o mesmo dia da emissão.
                 ParcelaNota parcela = new ParcelaNota();
                 parcela.setNumeroParcela("001");
                 parcela.setDataVencimento(dataEmissao);

@@ -8,8 +8,7 @@ import br.com.agropops.api.repository.AdminRepository;
 import br.com.agropops.api.repository.ContadorRepository;
 import br.com.agropops.api.repository.ProdutorRepository;
 import br.com.agropops.api.repository.RegraGlobalRepository;
-import com.auth0.jwt.JWT;
-import com.auth0.jwt.algorithms.Algorithm;
+import br.com.agropops.api.security.TokenService;
 import jakarta.annotation.PostConstruct;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -18,8 +17,6 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
-import java.time.Instant;
-import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -35,12 +32,10 @@ public class AdminController {
     @Autowired private ContadorRepository contadorRepository;
     @Autowired private ProdutorRepository produtorRepository;
     @Autowired private PasswordEncoder passwordEncoder;
-
     @Autowired private RegraGlobalRepository regraGlobalRepository;
 
-    private final String segredo = "MinhaChaveSuperSecretaDoAgroContabil";
-
-    // Roda automaticamente quando o servidor liga
+    // Injeção do nosso novo serviço de segurança centralizado
+    @Autowired private TokenService tokenService;
 
     @PostConstruct
     public void popularRegrasPadrao() {
@@ -106,8 +101,6 @@ public class AdminController {
         return r;
     }
 
-    // ENDPOINTS DE REGRAS GLOBAIS
-
     @GetMapping("/regras-globais")
     public ResponseEntity<List<RegraGlobal>> listarRegrasGlobais() {
         return ResponseEntity.ok(regraGlobalRepository.findAll());
@@ -115,7 +108,6 @@ public class AdminController {
 
     @PostMapping("/regras-globais")
     public ResponseEntity<RegraGlobal> criarRegraGlobal(@RequestBody RegraGlobal regra) {
-        // Se a regra já existe (CFOP 101 por exemplo), não cria duplicado.
         Optional<RegraGlobal> existe = regraGlobalRepository.findByTipoAndCodigo(regra.getTipo(), regra.getCodigo());
         if (existe.isPresent()) {
             return ResponseEntity.badRequest().build();
@@ -132,22 +124,17 @@ public class AdminController {
         return ResponseEntity.notFound().build();
     }
 
-    // ENDPOINTS ORIGINAIS DE LOGIN/ADMINS
-
     @PostMapping("/login")
     public ResponseEntity<?> login(@RequestBody Map<String, String> dados) {
         String email = dados.get("email");
         String senha = dados.get("senha");
 
         Optional<Admin> adminOpt = adminRepository.findByEmail(email);
+
         if (adminOpt.isPresent() && passwordEncoder.matches(senha, adminOpt.get().getSenha())) {
             Admin admin = adminOpt.get();
-            String token = JWT.create()
-                    .withIssuer("AgroPops API")
-                    .withSubject(admin.getEmail())
-                    .withClaim("role", "ADMIN")
-                    .withExpiresAt(Instant.now().plus(1, ChronoUnit.DAYS))
-                    .sign(Algorithm.HMAC256(segredo));
+            // Delegação da criação do token para o serviço
+            String token = tokenService.gerarToken(admin);
 
             Map<String, Object> resp = new HashMap<>();
             resp.put("token", token);
@@ -198,12 +185,8 @@ public class AdminController {
             Optional<Contador> contadorOpt = contadorRepository.findById(usuarioId);
             if (contadorOpt.isPresent()) {
                 Contador contador = contadorOpt.get();
-                String token = JWT.create()
-                        .withIssuer("AgroPops API")
-                        .withSubject(contador.getEmail())
-                        .withClaim("id", contador.getId())
-                        .withExpiresAt(Instant.now().plus(1, ChronoUnit.DAYS))
-                        .sign(Algorithm.HMAC256(segredo));
+                // Uso do método específico de impersonation (com expiração menor por segurança)
+                String token = tokenService.gerarTokenImpersonate(contador);
 
                 Map<String, Object> resp = new HashMap<>();
                 resp.put("token", token);
