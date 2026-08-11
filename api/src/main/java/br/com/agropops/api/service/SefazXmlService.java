@@ -61,7 +61,7 @@ public class SefazXmlService {
     }
 
     @Transactional
-    public String importarNotas(Long produtorId, Long propriedadeFallbackId, List<MultipartFile> arquivos) {
+    public br.com.agropops.api.dto.ResultadoImportacaoDTO importarNotas(Long produtorId, Long propriedadeFallbackId, List<MultipartFile> arquivos, boolean forcarDivergentes) {
         Produtor produtor = produtorRepository.findById(produtorId).orElseThrow();
 
         List<RegraNCM> regras = regraRepository.findByContadorId(produtor.getContador().getId());
@@ -79,8 +79,17 @@ public class SefazXmlService {
         Set<String> chavesExistentes = notaRepository.findChavesAcessoByProdutorId(produtorId);
         List<NotaFiscal> notasParaSalvar = new ArrayList<>();
 
-        int ignoradas = 0;
-        int falhas = 0;
+        br.com.agropops.api.dto.ResultadoImportacaoDTO resultado = new br.com.agropops.api.dto.ResultadoImportacaoDTO();
+
+        // 1. Montar lista de Documentos Válidos (Produtor + Propriedades)
+        List<String> documentosValidos = new ArrayList<>();
+        if (produtor.getCpfCnpj() != null) documentosValidos.add(produtor.getCpfCnpj().replaceAll("\\D", ""));
+        if (produtor.getCnpj() != null) documentosValidos.add(produtor.getCnpj().replaceAll("\\D", ""));
+        for (PropriedadeRural p : produtor.getPropriedades()) {
+            if (p.getCpfCnpj() != null && !p.getCpfCnpj().isEmpty()) {
+                documentosValidos.add(p.getCpfCnpj().replaceAll("\\D", ""));
+            }
+        }
 
         try {
             javax.xml.parsers.DocumentBuilder builder = getSecureDocumentBuilderFactory().newDocumentBuilder();
@@ -88,33 +97,63 @@ public class SefazXmlService {
             for (MultipartFile arquivo : arquivos) {
                 try {
                     Document doc = builder.parse(arquivo.getInputStream());
+
+                    // --- VERIFICAÇÃO DE DIVERGÊNCIA (CPF/CNPJ) ---
+                    String docEmitente = "";
+                    String nomeEmitente = "";
+                    if (doc.getElementsByTagName("emit").getLength() > 0) {
+                        org.w3c.dom.Element emit = (org.w3c.dom.Element) doc.getElementsByTagName("emit").item(0);
+                        if(emit.getElementsByTagName("CNPJ").getLength() > 0) docEmitente = emit.getElementsByTagName("CNPJ").item(0).getTextContent();
+                        else if(emit.getElementsByTagName("CPF").getLength() > 0) docEmitente = emit.getElementsByTagName("CPF").item(0).getTextContent();
+                        if(emit.getElementsByTagName("xNome").getLength() > 0) nomeEmitente = emit.getElementsByTagName("xNome").item(0).getTextContent();
+                    }
+
+                    String docDestinatario = "";
+                    String nomeDestinatario = "";
+                    if (doc.getElementsByTagName("dest").getLength() > 0) {
+                        org.w3c.dom.Element dest = (org.w3c.dom.Element) doc.getElementsByTagName("dest").item(0);
+                        if(dest.getElementsByTagName("CNPJ").getLength() > 0) docDestinatario = dest.getElementsByTagName("CNPJ").item(0).getTextContent();
+                        else if(dest.getElementsByTagName("CPF").getLength() > 0) docDestinatario = dest.getElementsByTagName("CPF").item(0).getTextContent();
+                        if(dest.getElementsByTagName("xNome").getLength() > 0) nomeDestinatario = dest.getElementsByTagName("xNome").item(0).getTextContent();
+                    }
+
+                    boolean pertenceAoProdutor = documentosValidos.contains(docEmitente) || documentosValidos.contains(docDestinatario);
+
+                    if (!pertenceAoProdutor && !forcarDivergentes) {
+                        // Se não pertence ao produtor e não foi forçado, adiciona à lista de divergentes e pula
+                        br.com.agropops.api.dto.NotaDivergenteDTO div = new br.com.agropops.api.dto.NotaDivergenteDTO();
+                        div.setNomeArquivo(arquivo.getOriginalFilename());
+                        div.setEmitente(nomeEmitente);
+                        div.setDestinatario(nomeDestinatario);
+                        div.setDocumentoEncontrado(docEmitente + " / " + docDestinatario);
+                        resultado.getDivergentes().add(div);
+                        continue;
+                    }
+                    // ---------------------------------------------
+
                     NotaFiscal notaProcessada = processarNotaNaMemoria(doc, produtor, mapaRegras, mapaGlobaisNcm, mapaGlobaisCfop, chavesExistentes, propriedadeFallbackId);
 
                     if (notaProcessada != null) {
                         notasParaSalvar.add(notaProcessada);
                         chavesExistentes.add(notaProcessada.getChaveAcesso());
                     } else {
-                        ignoradas++;
+                        resultado.setIgnoradas(resultado.getIgnoradas() + 1);
                     }
                 } catch (Exception e) {
                     System.out.println("Ficheiro ignorado (Inválido): " + arquivo.getOriginalFilename());
-                    falhas++;
+                    resultado.setFalhas(resultado.getFalhas() + 1);
                 }
             }
         } catch (Exception e) {
-            return "Erro crítico ao inicializar o leitor de XML: " + e.getMessage();
+            throw new RuntimeException("Erro crítico ao inicializar o leitor de XML: " + e.getMessage());
         }
 
         if (!notasParaSalvar.isEmpty()) {
             notaRepository.saveAll(notasParaSalvar);
+            resultado.setImportadas(notasParaSalvar.size());
         }
 
-        StringBuilder relatorio = new StringBuilder();
-        relatorio.append("Processamento concluído: ").append(notasParaSalvar.size()).append(" notas importadas.");
-        if (ignoradas > 0) relatorio.append(" ").append(ignoradas).append(" ignoradas (já existiam).");
-        if (falhas > 0) relatorio.append(" ").append(falhas).append(" falharam (arquivo inválido).");
-
-        return relatorio.toString();
+        return resultado;
     }
 
     @Transactional

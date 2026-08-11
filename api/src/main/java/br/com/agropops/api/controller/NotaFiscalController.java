@@ -125,14 +125,13 @@ public class NotaFiscalController {
 
 
     @PostMapping("/importar/{produtorId}")
-    public ResponseEntity<String> importarXml(
+    public ResponseEntity<br.com.agropops.api.dto.ResultadoImportacaoDTO> importarXml(
             @PathVariable Long produtorId,
             @RequestParam(value = "propriedadeFallbackId", required = false) Long propriedadeFallbackId,
+            @RequestParam(value = "forcar", defaultValue = "false") boolean forcar,
             @RequestParam("arquivos") List<MultipartFile> arquivos) {
 
-        // Agora o service devolve a String completa do relatório
-        String relatorio = sefazXmlService.importarNotas(produtorId, propriedadeFallbackId, arquivos);
-
+        br.com.agropops.api.dto.ResultadoImportacaoDTO relatorio = sefazXmlService.importarNotas(produtorId, propriedadeFallbackId, arquivos, forcar);
         return ResponseEntity.ok(relatorio);
     }
 
