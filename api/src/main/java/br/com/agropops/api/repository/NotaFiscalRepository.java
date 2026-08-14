@@ -11,17 +11,17 @@ import java.util.List;
 
 public interface NotaFiscalRepository extends JpaRepository<NotaFiscal, Long> {
 
-    // 1. Busca Padrão: Fazemos FETCH apenas nas parcelas. Os itens vêm sob demanda em lote (BatchSize).
+    // 1. Busca Padrão: Faze FETCH apenas nas parcelas. Os itens vêm sob demanda em lote (BatchSize).
     @Query("SELECT DISTINCT n FROM NotaFiscal n LEFT JOIN FETCH n.parcelas " +
             "WHERE n.produtor.id = :produtorId ORDER BY n.dataEmissao DESC")
     List<NotaFiscal> findByProdutorIdOrderByDataEmissaoDesc(@Param("produtorId") Long produtorId);
 
     List<NotaFiscal> findByProdutorId(Long produtorId);
 
-    // 2. Busca por Data: O FETCH no 'p' é obrigatório para o PostgreSQL aceitar o ORDER BY
-    @Query("SELECT DISTINCT n FROM NotaFiscal n LEFT JOIN FETCH n.parcelas p " +
-            "WHERE n.produtor.id = :produtorId AND p.dataVencimento BETWEEN :dataInicio AND :dataFim " +
-            "ORDER BY p.dataVencimento DESC")
+    // 2. Busca por Data
+    @Query("SELECT DISTINCT n FROM NotaFiscal n LEFT JOIN FETCH n.parcelas " +
+            "WHERE n.produtor.id = :produtorId AND n.dataEmissao BETWEEN :dataInicio AND :dataFim " +
+            "ORDER BY n.dataEmissao DESC")
     List<NotaFiscal> findByProdutorIdAndDataEmissaoBetweenOrderByDataEmissaoDesc(
             @Param("produtorId") Long produtorId,
             @Param("dataInicio") LocalDate dataInicio,

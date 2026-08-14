@@ -20,4 +20,6 @@ public class NotaFiscalDTO {
     private String naturezaOperacao;
     private String nomeEmitente;
     private String nomeDestinatario;
+    private Boolean conferida;
+    private String observacao;
 }

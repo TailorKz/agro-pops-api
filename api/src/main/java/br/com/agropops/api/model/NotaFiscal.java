@@ -49,6 +49,17 @@ public class NotaFiscal {
 
     private String empresaEnvolvida; // Razão Social
 
+    @Column(columnDefinition = "boolean default false")
+    private Boolean conferida = false;
+
+    @Column(columnDefinition = "TEXT")
+    private String observacao;
+
+    // Guarda como a nota chegou do XML
+    @Column(columnDefinition = "TEXT")
+    @JsonIgnore
+    private String jsonOriginal;
+
     @Column(length = 44)
     private String chaveAcessoReferencia; // Guarda o vínculo da contra-nota
 

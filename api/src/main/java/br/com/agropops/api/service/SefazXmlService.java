@@ -432,6 +432,40 @@ public class SefazXmlService {
                 nota.getParcelas().add(parcela);
             }
 
+            // CRIAR UM ESPELHO (JSON) DO XML ORIGINAL
+            try {
+                com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                java.util.Map<String, Object> dadosOriginais = new java.util.HashMap<>();
+
+                // Salva o estado puro dos itens
+                java.util.List<java.util.Map<String, Object>> origItens = new java.util.ArrayList<>();
+                for (ItemNota i : nota.getItens()) {
+                    java.util.Map<String, Object> mapI = new java.util.HashMap<>();
+                    mapI.put("descricao", i.getDescricao());
+                    mapI.put("ncm", i.getNcm());
+                    mapI.put("cfop", i.getCfop());
+                    mapI.put("valor", i.getValor().toString());
+                    mapI.put("isDedutivel", i.getIsDedutivel());
+                    origItens.add(mapI);
+                }
+                dadosOriginais.put("itens", origItens);
+
+                // Salva o estado puro das parcelas financeiras
+                java.util.List<java.util.Map<String, Object>> origParcelas = new java.util.ArrayList<>();
+                for (ParcelaNota p : nota.getParcelas()) {
+                    java.util.Map<String, Object> mapP = new java.util.HashMap<>();
+                    mapP.put("numeroParcela", p.getNumeroParcela());
+                    mapP.put("dataVencimento", p.getDataVencimento().toString());
+                    mapP.put("valor", p.getValor().toString());
+                    origParcelas.add(mapP);
+                }
+                dadosOriginais.put("parcelas", origParcelas);
+
+                nota.setJsonOriginal(mapper.writeValueAsString(dadosOriginais));
+            } catch (Exception ex) {
+                System.out.println("Aviso: Falha ao gerar JSON Original da nota: " + ex.getMessage());
+            }
+
             return nota;
         } catch (Exception e) {
             return null;

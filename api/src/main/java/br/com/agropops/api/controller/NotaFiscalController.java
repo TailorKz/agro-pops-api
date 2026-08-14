@@ -66,6 +66,8 @@ public class NotaFiscalController {
             dto.setValorTotal(nota.getValorTotal());
             dto.setEmpresaEnvolvida(nota.getEmpresaEnvolvida());
             dto.setChaveAcessoReferencia(nota.getChaveAcessoReferencia());
+            dto.setConferida(nota.getConferida());
+            dto.setObservacao(nota.getObservacao());
 
             List<ItemNotaDTO> itensDTO = nota.getItens().stream().map(item -> {
                 ItemNotaDTO itemDTO = new ItemNotaDTO();
@@ -270,6 +272,8 @@ public class NotaFiscalController {
             dto.setValorTotal(nota.getValorTotal());
             dto.setEmpresaEnvolvida(nota.getEmpresaEnvolvida());
             dto.setChaveAcessoReferencia(nota.getChaveAcessoReferencia());
+            dto.setConferida(nota.getConferida());
+            dto.setObservacao(nota.getObservacao());
 
             List<ItemNotaDTO> itensDTO = nota.getItens().stream().map(item -> {
                 ItemNotaDTO itemDTO = new ItemNotaDTO();
@@ -331,6 +335,79 @@ public class NotaFiscalController {
             }
             notaFiscalRepository.save(nota);
             return ResponseEntity.ok("Dados atualizados com sucesso.");
+        }).orElse(ResponseEntity.notFound().build());
+    }
+
+    // =======================================================
+    // FEATURES PADRÃO OURO: AUDITORIA E RESTAURAÇÃO DE XML
+    // =======================================================
+
+    @PutMapping("/{id}/conferida")
+    @Transactional
+    public ResponseEntity<?> toggleConferida(@PathVariable Long id, @RequestBody java.util.Map<String, Boolean> payload) {
+        return notaFiscalRepository.findById(id).map(nota -> {
+            nota.setConferida(payload.get("conferida"));
+            notaFiscalRepository.save(nota);
+            return ResponseEntity.ok("Status de conferência atualizado.");
+        }).orElse(ResponseEntity.notFound().build());
+    }
+
+    @PutMapping("/{id}/observacao")
+    @Transactional
+    public ResponseEntity<?> atualizarObservacao(@PathVariable Long id, @RequestBody java.util.Map<String, String> payload) {
+        return notaFiscalRepository.findById(id).map(nota -> {
+            nota.setObservacao(payload.get("observacao"));
+            notaFiscalRepository.save(nota);
+            return ResponseEntity.ok("Observação salva.");
+        }).orElse(ResponseEntity.notFound().build());
+    }
+
+    @PostMapping("/restaurar/{id}")
+    @Transactional
+    public ResponseEntity<?> restaurarOriginal(@PathVariable Long id) {
+        return notaFiscalRepository.findById(id).map(nota -> {
+            if (nota.getJsonOriginal() == null || nota.getJsonOriginal().isEmpty()) {
+                return ResponseEntity.badRequest().body("Esta nota não possui dados originais salvos do XML.");
+            }
+            try {
+                com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                java.util.Map<String, Object> dadosOriginais = mapper.readValue(nota.getJsonOriginal(), new com.fasterxml.jackson.core.type.TypeReference<java.util.Map<String, Object>>(){});
+
+                // 1. Apaga todas as edições do contador
+                nota.getItens().clear();
+                nota.getParcelas().clear();
+                notaFiscalRepository.saveAndFlush(nota);
+
+                // 2. Reconstrói os itens exatamente como vieram do XML
+                java.util.List<java.util.Map<String, Object>> origItens = (java.util.List<java.util.Map<String, Object>>) dadosOriginais.get("itens");
+                for (java.util.Map<String, Object> mapI : origItens) {
+                    br.com.agropops.api.model.ItemNota item = new br.com.agropops.api.model.ItemNota();
+                    item.setDescricao((String) mapI.get("descricao"));
+                    item.setNcm((String) mapI.get("ncm"));
+                    item.setCfop((String) mapI.get("cfop"));
+                    item.setValor(new java.math.BigDecimal(mapI.get("valor").toString()));
+                    item.setIsDedutivel((Boolean) mapI.get("isDedutivel"));
+                    item.setNotaFiscal(nota);
+                    nota.getItens().add(item);
+                }
+
+                // 3. Reconstrói as parcelas exatamente como vieram do XML
+                java.util.List<java.util.Map<String, Object>> origParcelas = (java.util.List<java.util.Map<String, Object>>) dadosOriginais.get("parcelas");
+                for (java.util.Map<String, Object> mapP : origParcelas) {
+                    br.com.agropops.api.model.ParcelaNota parcela = new br.com.agropops.api.model.ParcelaNota();
+                    parcela.setNumeroParcela((String) mapP.get("numeroParcela"));
+                    parcela.setDataVencimento(LocalDate.parse((String) mapP.get("dataVencimento")));
+                    parcela.setValor(new java.math.BigDecimal(mapP.get("valor").toString()));
+                    parcela.setNotaFiscal(nota);
+                    nota.getParcelas().add(parcela);
+                }
+
+                notaFiscalRepository.save(nota);
+                return ResponseEntity.ok("Sucesso! A nota foi restaurada ao estado original do XML.");
+            } catch (Exception e) {
+                e.printStackTrace();
+                return ResponseEntity.internalServerError().body("Erro ao restaurar a nota: " + e.getMessage());
+            }
         }).orElse(ResponseEntity.notFound().build());
     }
 }

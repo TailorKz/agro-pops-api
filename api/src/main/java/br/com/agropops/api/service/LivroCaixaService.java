@@ -78,7 +78,8 @@ public class LivroCaixaService {
                             temItemDedutivel,
                             nota.getId(),
                             percDedutivel.multiply(new BigDecimal("100")).setScale(1, RoundingMode.HALF_UP),
-                            valorDedutivelParcela
+                            valorDedutivelParcela,
+                            nota.getConferida()
                     ));
                 }
             }
@@ -98,7 +99,8 @@ public class LivroCaixaService {
                     avulso.getIsDedutivel(),
                     null,
                     avulso.getIsDedutivel() ? new BigDecimal("100.0") : BigDecimal.ZERO,
-                    avulso.getIsDedutivel() ? avulso.getValor() : BigDecimal.ZERO
+                    avulso.getIsDedutivel() ? avulso.getValor() : BigDecimal.ZERO,
+                    true
             ));
         }
 

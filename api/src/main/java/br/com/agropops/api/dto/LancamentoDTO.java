@@ -14,5 +14,6 @@ public record LancamentoDTO(
         Boolean isDedutivel,
         Long notaId,
         BigDecimal percDedutivel,
-        BigDecimal valorDedutivel
+        BigDecimal valorDedutivel,
+        Boolean conferida
 ) {}
