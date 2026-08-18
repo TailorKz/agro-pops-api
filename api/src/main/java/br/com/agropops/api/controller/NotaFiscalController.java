@@ -333,14 +333,18 @@ public class NotaFiscalController {
                     nota.getParcelas().add(nova);
                 }
             }
+
+            java.math.BigDecimal somaDasParcelas = nota.getParcelas().stream()
+                    .map(ParcelaNota::getValor)
+                    .reduce(java.math.BigDecimal.ZERO, java.math.BigDecimal::add);
+            nota.setValorTotal(somaDasParcelas);
+
             notaFiscalRepository.save(nota);
             return ResponseEntity.ok("Dados atualizados com sucesso.");
         }).orElse(ResponseEntity.notFound().build());
-    }
 
-    // =======================================================
-    // FEATURES PADRÃO OURO: AUDITORIA E RESTAURAÇÃO DE XML
-    // =======================================================
+    }
+    // UDITORIA E RESTAURAÇÃO DE XML
 
     @PutMapping("/{id}/conferida")
     @Transactional
@@ -409,5 +413,22 @@ public class NotaFiscalController {
                 return ResponseEntity.internalServerError().body("Erro ao restaurar a nota: " + e.getMessage());
             }
         }).orElse(ResponseEntity.notFound().build());
+    }
+
+    @PostMapping("/importar-chave/{produtorId}")
+    @Transactional
+    public ResponseEntity<?> importarPorChave(
+            @PathVariable Long produtorId,
+            @RequestBody java.util.Map<String, Object> payload) {
+        try {
+            String chave = (String) payload.get("chave");
+            Object propIdObj = payload.get("propriedadeId");
+            Long propriedadeId = propIdObj != null ? Long.valueOf(propIdObj.toString()) : null;
+
+            NotaFiscal nota = sefazXmlService.importarNotaPorChave(produtorId, chave, propriedadeId);
+            return ResponseEntity.ok(nota);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
     }
 }

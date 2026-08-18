@@ -28,6 +28,7 @@ public interface NotaFiscalRepository extends JpaRepository<NotaFiscal, Long> {
             @Param("dataFim") LocalDate dataFim);
 
     boolean existsByChaveAcesso(String chaveAcesso);
+    java.util.Optional<NotaFiscal> findByChaveAcesso(String chaveAcesso);
 
     @Query("SELECT n.chaveAcesso FROM NotaFiscal n WHERE n.produtor.id = :produtorId")
     java.util.Set<String> findChavesAcessoByProdutorId(@Param("produtorId") Long produtorId);

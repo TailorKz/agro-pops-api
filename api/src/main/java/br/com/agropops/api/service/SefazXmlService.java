@@ -471,4 +471,65 @@ public class SefazXmlService {
             return null;
         }
     }
+    // ========================================================
+    // IMPORTAÇÃO AUTOMATIZADA VIA CHAVE DE ACESSO (LEITOR)
+    // ========================================================
+    @Transactional
+    public NotaFiscal importarNotaPorChave(Long produtorId, String chave, Long propriedadeId) {
+        if (chave == null || chave.length() != 44) {
+            throw new RuntimeException("Chave de acesso inválida. Deve conter exatamente 44 dígitos.");
+        }
+
+        if (notaRepository.findByChaveAcesso(chave).isPresent()) {
+            throw new RuntimeException("Esta nota fiscal já foi importada anteriormente.");
+        }
+
+        Produtor produtor = produtorRepository.findById(produtorId)
+                .orElseThrow(() -> new RuntimeException("Produtor não encontrado."));
+
+        // Extrai dados básicos diretamente da estrutura padrão de 44 dígitos da chave NF-e
+        // [UF(2)][AAMM(4)][CNPJ(14)][Mod(2)][Serie(3)][Nº(9)][TpEmis(4)][cDV(1)]
+        String cnpjEmitente = chave.substring(6, 20);
+        String numeroNota = String.valueOf(Integer.parseInt(chave.substring(25, 34)));
+        String anoMes = "20" + chave.substring(2, 4) + "-" + chave.substring(4, 6) + "-01";
+
+        NotaFiscal nota = new NotaFiscal();
+        nota.setProdutor(produtor);
+        nota.setChaveAcesso(chave);
+        nota.setNumero(numeroNota);
+        nota.setTipo("SAIDA");
+        nota.setDataEmissao(LocalDate.parse(anoMes));
+        nota.setEmpresaEnvolvida("Fornecedor CNPJ: " + cnpjEmitente);
+        nota.setValorTotal(BigDecimal.ZERO); // O contador ajustará o valor posteriormente se necessário
+
+        // Vincula a propriedade rural
+        if (propriedadeId != null) {
+            produtor.getPropriedades().stream()
+                    .filter(p -> p.getId().equals(propriedadeId))
+                    .findFirst()
+                    .ifPresent(nota::setPropriedadeRural);
+        } else if (!produtor.getPropriedades().isEmpty()) {
+            nota.setPropriedadeRural(produtor.getPropriedades().get(0));
+        }
+
+        // Adiciona um item padrão para a nota não ficar vazia
+        ItemNota item = new ItemNota();
+        item.setDescricao("Importado via Leitor de Chave (Aguardando Detalhes)");
+        item.setNcm("00000000");
+        item.setCfop("1102");
+        item.setValor(BigDecimal.ZERO);
+        item.setIsDedutivel(true);
+        item.setNotaFiscal(nota);
+        nota.getItens().add(item);
+
+        // Adiciona parcela padrão
+        ParcelaNota parcela = new ParcelaNota();
+        parcela.setNumeroParcela("001");
+        parcela.setDataVencimento(nota.getDataEmissao());
+        parcela.setValor(BigDecimal.ZERO);
+        parcela.setNotaFiscal(nota);
+        nota.getParcelas().add(parcela);
+
+        return notaRepository.save(nota);
+    }
 }
