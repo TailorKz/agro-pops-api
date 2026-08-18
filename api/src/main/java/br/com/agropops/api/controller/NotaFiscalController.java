@@ -257,7 +257,7 @@ public class NotaFiscalController {
     @GetMapping("/buscar/{id}")
     @Transactional(readOnly = true)
     public ResponseEntity<NotaFiscalDTO> buscarPorId(@PathVariable Long id) {
-        return notaFiscalRepository.findById(id).map(nota -> {
+        return notaFiscalRepository.findByIdWithItensEParcelas(id).map(nota -> {
             NotaFiscalDTO dto = new NotaFiscalDTO();
             dto.setId(nota.getId());
             dto.setNumero(nota.getNumero());

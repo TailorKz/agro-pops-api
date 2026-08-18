@@ -45,16 +45,15 @@ public interface NotaFiscalRepository extends JpaRepository<NotaFiscal, Long> {
             @Param("inicio") LocalDate inicio,
             @Param("fim") LocalDate fim);
 
-    @Query("SELECT DISTINCT n FROM NotaFiscal n LEFT JOIN FETCH n.parcelas " +
+    @Query("SELECT DISTINCT n FROM NotaFiscal n LEFT JOIN FETCH n.parcelas LEFT JOIN FETCH n.itens " +
             "WHERE n.produtor.id = :produtorId " +
             "AND EXISTS (SELECT 1 FROM ParcelaNota p2 WHERE p2.notaFiscal = n AND EXTRACT(YEAR FROM p2.dataVencimento) = :ano)")
     List<NotaFiscal> findByProdutorIdAndAnoVencimento(
             @Param("produtorId") Long produtorId,
             @Param("ano") int ano);
 
-    // =========================================================================
-    // MOTOR FINANCEIRO DE ALTA PERFORMANCE (REGIME DE CAIXA CONSOLIDADO)
-    // =========================================================================
+    // MOTOR FINANCEIRO REGIME DE CAIXA CONSOLIDADO
+
 
     @Query("SELECT " +
             "COALESCE(SUM(CASE WHEN n.tipo = 'ENTRADA' THEN p.valor ELSE 0 END), 0), " +
@@ -81,4 +80,8 @@ public interface NotaFiscalRepository extends JpaRepository<NotaFiscal, Long> {
     @org.springframework.data.jpa.repository.Modifying
     @Query("DELETE FROM NotaFiscal n WHERE n.id IN :notaIds")
     void deleteAllNotasByIds(@Param("notaIds") List<Long> notaIds);
+
+    // BUSCA OTIMIZADA PARA ABERTURA DE NOTA NO MODAL (ÚNICA QUERY)
+    @Query("SELECT n FROM NotaFiscal n LEFT JOIN FETCH n.itens LEFT JOIN FETCH n.parcelas WHERE n.id = :id")
+    java.util.Optional<NotaFiscal> findByIdWithItensEParcelas(@Param("id") Long id);
 }

@@ -27,7 +27,7 @@ public class ParcelaNota {
     @Column(nullable = false)
     private BigDecimal valor;
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "nota_fiscal_id", nullable = false)
     @JsonIgnore
     private NotaFiscal notaFiscal;

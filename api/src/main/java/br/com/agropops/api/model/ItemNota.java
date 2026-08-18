@@ -30,7 +30,7 @@ public class ItemNota {
     private String cfop;
 
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "nota_fiscal_id", nullable = false)
     @JsonIgnore // Evita loop infinito no JSON
     private NotaFiscal notaFiscal;

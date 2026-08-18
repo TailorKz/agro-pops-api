@@ -63,13 +63,13 @@ public class NotaFiscal {
     @Column(length = 44)
     private String chaveAcessoReferencia; // Guarda o vínculo da contra-nota
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "produtor_id", nullable = false)
     @JsonIgnore
     private Produtor produtor;
 
     // VÍNCULO DA NOTA COM A FAZENDA
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "propriedade_rural_id")
     private PropriedadeRural propriedadeRural;
 

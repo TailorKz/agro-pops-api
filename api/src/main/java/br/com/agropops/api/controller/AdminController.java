@@ -87,6 +87,12 @@ public class AdminController {
             regras.add(criarRegra("NCM", "61", "Vestuário e acessórios (Uso Pessoal)", false));
             regras.add(criarRegra("NCM", "64", "Calçados (Uso Pessoal)", false));
 
+
+            // PARÂMETROS DO SISTEMA (IRPR)
+            regras.add(criarRegra("SISTEMA", "IRPR_LIMITES", "{\"faturamentoMinimo\": 177920.00, \"limiteLcdpr\": 4800000.00, \"lucroPresumido\": 0.20, \"bensTotais\": 800000.00}", false));
+
+            regraGlobalRepository.saveAll(regras);
+
             regraGlobalRepository.saveAll(regras);
             System.out.println("  [AUTO-SEED] Sucesso! Regras injetadas no banco de dados.");
         }
