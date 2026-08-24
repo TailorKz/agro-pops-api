@@ -319,20 +319,55 @@ public class SefazXmlService {
             // ========================================================
             BigDecimal valorTotalAjustado = BigDecimal.ZERO;
             org.w3c.dom.NodeList detNodes = doc.getElementsByTagName("det");
-
             for (int i = 0; i < detNodes.getLength(); i++) {
                 org.w3c.dom.Element det = (org.w3c.dom.Element) detNodes.item(i);
                 org.w3c.dom.Element prod = (org.w3c.dom.Element) det.getElementsByTagName("prod").item(0);
 
                 String nomeProduto = prod.getElementsByTagName("xProd").item(0).getTextContent();
                 String ncmProduto = prod.getElementsByTagName("NCM").item(0).getTextContent();
+
                 String cfop = "";
                 if (prod.getElementsByTagName("CFOP").getLength() > 0) {
                     cfop = prod.getElementsByTagName("CFOP").item(0).getTextContent();
                 }
 
+                // 1. Extrai o valor bruto do produto
                 String valorProdutoStr = prod.getElementsByTagName("vProd").item(0).getTextContent();
-                BigDecimal valorProduto = new BigDecimal(valorProdutoStr);
+                BigDecimal valorBruto = new BigDecimal(valorProdutoStr);
+
+                // 2. Extrai os modificadores do valor (Descontos e Acréscimos)
+                BigDecimal vDesc = BigDecimal.ZERO;
+                if (prod.getElementsByTagName("vDesc").getLength() > 0) {
+                    vDesc = new BigDecimal(prod.getElementsByTagName("vDesc").item(0).getTextContent());
+                }
+
+                BigDecimal vFrete = BigDecimal.ZERO;
+                if (prod.getElementsByTagName("vFrete").getLength() > 0) {
+                    vFrete = new BigDecimal(prod.getElementsByTagName("vFrete").item(0).getTextContent());
+                }
+
+                BigDecimal vSeg = BigDecimal.ZERO;
+                if (prod.getElementsByTagName("vSeg").getLength() > 0) {
+                    vSeg = new BigDecimal(prod.getElementsByTagName("vSeg").item(0).getTextContent());
+                }
+
+                BigDecimal vOutro = BigDecimal.ZERO;
+                if (prod.getElementsByTagName("vOutro").getLength() > 0) {
+                    vOutro = new BigDecimal(prod.getElementsByTagName("vOutro").item(0).getTextContent());
+                }
+
+                BigDecimal vIPI = BigDecimal.ZERO;
+                if (det.getElementsByTagName("vIPI").getLength() > 0) {
+                    vIPI = new BigDecimal(det.getElementsByTagName("vIPI").item(0).getTextContent());
+                }
+
+                // 3. Aplica a inteligência de mercado: Valor Líquido Real do Item
+                BigDecimal valorProduto = valorBruto
+                        .subtract(vDesc)
+                        .add(vFrete)
+                        .add(vSeg)
+                        .add(vOutro)
+                        .add(vIPI);
 
                 // INTELIGÊNCIA TRIBUTÁRIA GLOBAL E DO CONTADOR
                 boolean isDedutivel = tipo.equals("ENTRADA");
