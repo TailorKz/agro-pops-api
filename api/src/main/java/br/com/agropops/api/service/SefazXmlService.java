@@ -437,9 +437,12 @@ public class SefazXmlService {
             }
 
             nota.setValorTotal(valorTotalAjustado);
-            org.w3c.dom.NodeList dupNodes = doc.getElementsByTagName("dup");
 
+            org.w3c.dom.NodeList dupNodes = doc.getElementsByTagName("dup");
             if (dupNodes.getLength() > 0) {
+                // 1. Variável para somar tudo que foi encontrado nas faturas/duplicatas
+                BigDecimal somaParcelas = BigDecimal.ZERO;
+
                 for (int k = 0; k < dupNodes.getLength(); k++) {
                     org.w3c.dom.Element dup = (org.w3c.dom.Element) dupNodes.item(k);
                     String nDup = dup.getElementsByTagName("nDup").item(0).getTextContent();
@@ -457,8 +460,33 @@ public class SefazXmlService {
                     parcela.setValor(vDup);
                     parcela.setNotaFiscal(nota);
                     nota.getParcelas().add(parcela);
+
+                    // Acumula o valor absoluto para não ter problemas com devoluções
+                    somaParcelas = somaParcelas.add(vDup.abs());
                 }
+
+                // CÁLCULO DO RESÍDUO (FUNRURAL / PAGAMENTO À VISTA)
+                BigDecimal diferenca = valorTotalAjustado.abs().subtract(somaParcelas).setScale(2, java.math.RoundingMode.HALF_UP);
+
+                // Se houver uma diferença financeira na nota (margem de erro de 5 centavos para arredondamento SEFAZ)
+                if (diferenca.compareTo(new BigDecimal("0.05")) > 0) {
+                    ParcelaNota parcelaResiduo = new ParcelaNota();
+                    // "RET/AV" = Retenção (impostos) ou À Vista (parte paga fora do boleto)
+                    parcelaResiduo.setNumeroParcela("RET/AV");
+                    parcelaResiduo.setDataVencimento(dataEmissao); // Lançado na mesma data da nota
+
+                    BigDecimal vResiduo = diferenca;
+                    if (valorTotalAjustado.compareTo(BigDecimal.ZERO) < 0) {
+                        vResiduo = vResiduo.negate(); // Mantém o sinal correto caso seja devolução
+                    }
+
+                    parcelaResiduo.setValor(vResiduo);
+                    parcelaResiduo.setNotaFiscal(nota);
+                    nota.getParcelas().add(parcelaResiduo);
+                }
+
             } else {
+                // Caso a nota não tenha aba de cobrança/fatura
                 ParcelaNota parcela = new ParcelaNota();
                 parcela.setNumeroParcela("001");
                 parcela.setDataVencimento(dataEmissao);
