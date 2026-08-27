@@ -22,4 +22,5 @@ public class NotaFiscalDTO {
     private String nomeDestinatario;
     private Boolean conferida;
     private String observacao;
+    private Long propriedadeId;
 }

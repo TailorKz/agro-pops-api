@@ -12,6 +12,7 @@ public interface LancamentoAvulsoRepository extends JpaRepository<LancamentoAvul
     @Query("SELECT l FROM LancamentoAvulso l WHERE l.produtor.id = :produtorId AND EXTRACT(YEAR FROM l.data) = :ano")
     List<LancamentoAvulso> findByProdutorIdAndAno(@Param("produtorId") Long produtorId, @Param("ano") int ano);
 
+    boolean existsByPropriedadeRuralId(Long propriedadeRuralId);
     // =========================================================================
     // UMA ÚNICA QUERY PARA TODOS OS CÁLCULOS AVULSOS
     // Retorna: [0] = Receitas, [1] = Saídas Totais, [2] = Saídas Dedutíveis

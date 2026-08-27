@@ -45,6 +45,7 @@ public class SefazXmlService {
             "5201", "5202", "5410", "5411", "6201", "6202", "6410", "6411"
     );
 
+    private static final com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
     // ========================================================
     // MOTOR DE SEGURANÇA XXE (XML External Entity)
     // ========================================================
@@ -61,7 +62,7 @@ public class SefazXmlService {
     }
 
     @Transactional
-    public br.com.agropops.api.dto.ResultadoImportacaoDTO importarNotas(Long produtorId, Long propriedadeFallbackId, List<MultipartFile> arquivos, boolean forcarDivergentes) {
+    public br.com.agropops.api.dto.ResultadoImportacaoDTO importarNotas(Long produtorId, Long propriedadeFallbackId, List<MultipartFile> arquivos, boolean forcarDivergentes, boolean ignorarParcelas) {
         Produtor produtor = produtorRepository.findById(produtorId).orElseThrow();
 
         List<RegraNCM> regras = regraRepository.findByContadorId(produtor.getContador().getId());
@@ -129,9 +130,8 @@ public class SefazXmlService {
                         resultado.getDivergentes().add(div);
                         continue;
                     }
-                    // ---------------------------------------------
 
-                    NotaFiscal notaProcessada = processarNotaNaMemoria(doc, produtor, mapaRegras, mapaGlobaisNcm, mapaGlobaisCfop, chavesExistentes, propriedadeFallbackId);
+                    NotaFiscal notaProcessada = processarNotaNaMemoria(doc, produtor, mapaRegras, mapaGlobaisNcm, mapaGlobaisCfop, chavesExistentes, propriedadeFallbackId, ignorarParcelas);
 
                     if (notaProcessada != null) {
                         notasParaSalvar.add(notaProcessada);
@@ -171,7 +171,7 @@ public class SefazXmlService {
             InputStream targetStream = new ByteArrayInputStream(xmlContent.getBytes());
             Document doc = getSecureDocumentBuilderFactory().newDocumentBuilder().parse(targetStream);
 
-            NotaFiscal notaProcessada = processarNotaNaMemoria(doc, produtor, mapaRegras, mapaGlobaisNcm, mapaGlobaisCfop, chavesExistentes, null);
+            NotaFiscal notaProcessada = processarNotaNaMemoria(doc, produtor, mapaRegras, mapaGlobaisNcm, mapaGlobaisCfop, chavesExistentes, null, false);
 
             if (notaProcessada != null) {
                 notaRepository.save(notaProcessada);
@@ -184,7 +184,7 @@ public class SefazXmlService {
         }
     }
 
-    private NotaFiscal processarNotaNaMemoria(Document doc, Produtor produtor, Map<String, Boolean> mapaRegras, Map<String, RegraGlobal> mapaGlobaisNcm, Map<String, RegraGlobal> mapaGlobaisCfop, Set<String> chavesExistentes, Long propriedadeFallbackId) {
+    private NotaFiscal processarNotaNaMemoria(Document doc, Produtor produtor, Map<String, Boolean> mapaRegras, Map<String, RegraGlobal> mapaGlobaisNcm, Map<String, RegraGlobal> mapaGlobaisCfop, Set<String> chavesExistentes, Long propriedadeFallbackId, boolean ignorarParcelas) {
         try {
             String idAtributo = doc.getElementsByTagName("infNFe").item(0).getAttributes().getNamedItem("Id").getNodeValue();
             String chaveAcesso = idAtributo.replace("NFe", "");
@@ -439,7 +439,9 @@ public class SefazXmlService {
             nota.setValorTotal(valorTotalAjustado);
 
             org.w3c.dom.NodeList dupNodes = doc.getElementsByTagName("dup");
-            if (dupNodes.getLength() > 0) {
+
+            // trava do ignorarParcelas + regra de resíduo
+            if (!ignorarParcelas && dupNodes.getLength() > 0) {
                 // 1. Variável para somar tudo que foi encontrado nas faturas/duplicatas
                 BigDecimal somaParcelas = BigDecimal.ZERO;
 
@@ -486,7 +488,7 @@ public class SefazXmlService {
                 }
 
             } else {
-                // Caso a nota não tenha aba de cobrança/fatura
+                // Caso a nota não tenha aba de cobrança/fatura OU o contador tenha desmarcado o checkbox
                 ParcelaNota parcela = new ParcelaNota();
                 parcela.setNumeroParcela("001");
                 parcela.setDataVencimento(dataEmissao);
@@ -497,7 +499,7 @@ public class SefazXmlService {
 
             // CRIAR UM ESPELHO (JSON) DO XML ORIGINAL
             try {
-                com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+
                 java.util.Map<String, Object> dadosOriginais = new java.util.HashMap<>();
 
                 // Salva o estado puro dos itens

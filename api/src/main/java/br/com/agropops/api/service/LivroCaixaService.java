@@ -2,10 +2,7 @@ package br.com.agropops.api.service;
 
 import br.com.agropops.api.dto.LancamentoDTO;
 import br.com.agropops.api.dto.TotaisLivroCaixaDTO;
-import br.com.agropops.api.model.ItemNota;
-import br.com.agropops.api.model.LancamentoAvulso;
-import br.com.agropops.api.model.NotaFiscal;
-import br.com.agropops.api.model.ParcelaNota;
+import br.com.agropops.api.model.*;
 import br.com.agropops.api.repository.LancamentoAvulsoRepository;
 import br.com.agropops.api.repository.NotaFiscalRepository;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -66,7 +63,14 @@ public class LivroCaixaService {
                     somaDedutivelAcumulada = somaDedutivelAcumulada.add(valorDedutivelParcela);
                 }
 
+                // ... código existente
                 if (parcela.getDataVencimento().getYear() == ano) {
+
+                    PropriedadeRural prop = nota.getPropriedadeRural();
+                    Long propId = prop != null ? prop.getId() : null;
+                    String propNome = prop != null ? prop.getNome() : "Consolidado";
+                    BigDecimal propPerc = prop != null ? prop.getPercentualParticipacao() : new BigDecimal("100.0");
+
                     livroCaixa.add(new LancamentoDTO(
                             "NFE-" + parcela.getId(),
                             parcela.getDataVencimento(),
@@ -79,7 +83,10 @@ public class LivroCaixaService {
                             nota.getId(),
                             percDedutivel.multiply(new BigDecimal("100")).setScale(1, RoundingMode.HALF_UP),
                             valorDedutivelParcela,
-                            nota.getConferida()
+                            nota.getConferida(),
+                            propId,
+                            propNome,
+                            propPerc
                     ));
                 }
             }
@@ -88,6 +95,12 @@ public class LivroCaixaService {
         // 2. Extrair Lançamentos Manuais (Avulsos)
         List<LancamentoAvulso> avulsos = avulsoRepository.findByProdutorIdAndAno(produtorId, ano);
         for (LancamentoAvulso avulso : avulsos) {
+
+            PropriedadeRural propAv = avulso.getPropriedadeRural();
+            Long propIdAv = propAv != null ? propAv.getId() : null;
+            String propNomeAv = propAv != null ? propAv.getNome() : "Consolidado";
+            BigDecimal propPercAv = propAv != null ? propAv.getPercentualParticipacao() : new BigDecimal("100.0");
+
             livroCaixa.add(new LancamentoDTO(
                     "AVU-" + avulso.getId(),
                     avulso.getData(),
@@ -100,7 +113,10 @@ public class LivroCaixaService {
                     null,
                     avulso.getIsDedutivel() ? new BigDecimal("100.0") : BigDecimal.ZERO,
                     avulso.getIsDedutivel() ? avulso.getValor() : BigDecimal.ZERO,
-                    true
+                    true,
+                    propIdAv,
+                    propNomeAv,
+                    propPercAv
             ));
         }
 

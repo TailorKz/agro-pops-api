@@ -41,6 +41,12 @@ public class ProdutorController {
     @Autowired
     private TokenService tokenService;
 
+    @Autowired
+    private br.com.agropops.api.repository.NotaFiscalRepository notaRepository;
+
+    @Autowired
+    private br.com.agropops.api.repository.LancamentoAvulsoRepository avulsoRepository;
+
     @PostMapping("/cadastrar")
     @Transactional
     public ResponseEntity<?> cadastrarProdutor(
@@ -83,10 +89,24 @@ public class ProdutorController {
 
                 List<PropriedadeRural> propriedadesAtuais = produtor.getPropriedades();
 
-                // Remove as que o usuário excluiu na tela
-                propriedadesAtuais.removeIf(propAtual ->
-                        listaNovasPropriedades.stream().noneMatch(pNovo -> pNovo.getId() != null && pNovo.getId().equals(propAtual.getId()))
-                );
+                // 1. Identificar quais propriedades o usuário deletou na tela
+                List<PropriedadeRural> propriedadesParaRemover = propriedadesAtuais.stream()
+                        .filter(propAtual -> listaNovasPropriedades.stream()
+                                .noneMatch(pNovo -> pNovo.getId() != null && pNovo.getId().equals(propAtual.getId())))
+                        .collect(java.util.stream.Collectors.toList());
+
+                // 2. Validação de Integridade (Aviso bloqueador para o Contador)
+                for (PropriedadeRural prop : propriedadesParaRemover) {
+                    boolean temNotas = notaRepository.existsByPropriedadeRuralId(prop.getId());
+                    boolean temAvulsos = avulsoRepository.existsByPropriedadeRuralId(prop.getId());
+
+                    if (temNotas || temAvulsos) {
+                        return ResponseEntity.badRequest().body("Não é possível excluir a propriedade '" + prop.getNome() + "'. Existem notas fiscais ou lançamentos do Livro Caixa vinculados a ela. Por favor, apague as notas atreladas a ela antes de excluir o imóvel.");
+                    }
+                }
+
+                // 3. Se passou pela validação, remove do banco em segurança
+                propriedadesAtuais.removeAll(propriedadesParaRemover);
 
                 // Atualiza ou adiciona as propriedades
                 for (PropriedadeRural pNovo : listaNovasPropriedades) {

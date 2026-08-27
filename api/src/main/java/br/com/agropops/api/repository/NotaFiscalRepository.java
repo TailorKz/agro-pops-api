@@ -11,6 +11,8 @@ import java.util.List;
 
 public interface NotaFiscalRepository extends JpaRepository<NotaFiscal, Long> {
 
+    boolean existsByPropriedadeRuralId(Long propriedadeRuralId);
+
     // 1. Busca Padrão: Faze FETCH apenas nas parcelas. Os itens vêm sob demanda em lote (BatchSize).
     @Query("SELECT DISTINCT n FROM NotaFiscal n LEFT JOIN FETCH n.parcelas " +
             "WHERE n.produtor.id = :produtorId ORDER BY n.dataEmissao DESC")

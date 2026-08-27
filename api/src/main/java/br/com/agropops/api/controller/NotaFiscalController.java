@@ -87,42 +87,45 @@ public class NotaFiscalController {
         return ResponseEntity.ok(notasDTO);
     }
 
-    // --- 2. ENDPOINT DELETAR TODAS (COM BULK DELETE DE ALTA PERFORMANCE) ---
+    // ENDPOINT DELETAR TODAS
     @DeleteMapping("/deletar-todas/{produtorId}")
     @Transactional
     public ResponseEntity<?> deletarNotasDoProdutor(
             @PathVariable Long produtorId,
+            @RequestParam(required = false) Long propriedadeId, // <--- NOVO PARÂMETRO
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate inicio,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fim) {
 
         List<NotaFiscal> notas;
 
         if (inicio != null && fim != null) {
-            notas = notaFiscalRepository.findByProdutorAndDataEmissaoBetween(produtorId, inicio, fim);
+            notas = notaFiscalRepository.findByProdutorIdAndDataEmissaoBetweenOrderByDataEmissaoDesc(produtorId, inicio, fim);
         } else {
             notas = notaFiscalRepository.findByProdutorId(produtorId);
+        }
+
+        // Filtra para manter apenas as notas da propriedade que o usuário quer apagar
+        if (propriedadeId != null) {
+            notas = notas.stream()
+                    .filter(n -> n.getPropriedadeRural() != null && n.getPropriedadeRural().getId().equals(propriedadeId))
+                    .collect(Collectors.toList());
         }
 
         if (notas.isEmpty()) {
             return ResponseEntity.ok("Não há notas para excluir neste período.");
         }
 
-        // Pega apenas os IDs das notas que precisam ser apagadas
         List<Long> notaIds = notas.stream().map(NotaFiscal::getId).collect(Collectors.toList());
 
-        // Deleta em lotes de 1.000 para não sobrecarregar a memória
         int tamanhoLote = 1000;
         for (int i = 0; i < notaIds.size(); i += tamanhoLote) {
             List<Long> loteIds = notaIds.subList(i, Math.min(i + tamanhoLote, notaIds.size()));
-
-
             notaFiscalRepository.deleteAllItensByNotaIds(loteIds);
             notaFiscalRepository.deleteAllParcelasByNotaIds(loteIds);
-
             notaFiscalRepository.deleteAllNotasByIds(loteIds);
         }
 
-        return ResponseEntity.ok(notas.size() + " notas foram apagadas com sucesso de forma otimizada.");
+        return ResponseEntity.ok(notas.size() + " notas foram apagadas com sucesso.");
     }
 
 
@@ -131,9 +134,10 @@ public class NotaFiscalController {
             @PathVariable Long produtorId,
             @RequestParam(value = "propriedadeFallbackId", required = false) Long propriedadeFallbackId,
             @RequestParam(value = "forcar", defaultValue = "false") boolean forcar,
+            @RequestParam(value = "ignorarParcelas", defaultValue = "false") boolean ignorarParcelas,
             @RequestParam("arquivos") List<MultipartFile> arquivos) {
 
-        br.com.agropops.api.dto.ResultadoImportacaoDTO relatorio = sefazXmlService.importarNotas(produtorId, propriedadeFallbackId, arquivos, forcar);
+        br.com.agropops.api.dto.ResultadoImportacaoDTO relatorio = sefazXmlService.importarNotas(produtorId, propriedadeFallbackId, arquivos, forcar, ignorarParcelas);
         return ResponseEntity.ok(relatorio);
     }
 
@@ -150,6 +154,7 @@ public class NotaFiscalController {
         nota.setValorTotal(form.getValorTotal());
         nota.setEmpresaEnvolvida(form.getEmpresaEnvolvida());
         nota.setProdutor(produtorOpt.get());
+        nota.setObservacao(form.getObservacao());
 
         // Vincula a fazenda caso exista
         if (form.getPropriedadeId() != null) {
@@ -274,6 +279,7 @@ public class NotaFiscalController {
             dto.setChaveAcessoReferencia(nota.getChaveAcessoReferencia());
             dto.setConferida(nota.getConferida());
             dto.setObservacao(nota.getObservacao());
+            dto.setPropriedadeId(nota.getPropriedadeRural() != null ? nota.getPropriedadeRural().getId() : null);
 
             List<ItemNotaDTO> itensDTO = nota.getItens().stream().map(item -> {
                 ItemNotaDTO itemDTO = new ItemNotaDTO();

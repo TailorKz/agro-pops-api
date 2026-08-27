@@ -16,4 +16,5 @@ public class NotaManualForm {
     private Boolean isDedutivel;
     private Long propriedadeId;
     private List<ParcelaNotaDTO> parcelas;
+    private String observacao;
 }

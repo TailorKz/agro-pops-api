@@ -15,5 +15,8 @@ public record LancamentoDTO(
         Long notaId,
         BigDecimal percDedutivel,
         BigDecimal valorDedutivel,
-        Boolean conferida
+        Boolean conferida,
+        Long propriedadeId,
+        String nomePropriedade,
+        BigDecimal percentualPropriedade
 ) {}
