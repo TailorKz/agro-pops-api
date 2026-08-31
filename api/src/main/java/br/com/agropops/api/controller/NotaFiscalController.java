@@ -199,7 +199,9 @@ public class NotaFiscalController {
     public ResponseEntity<String> manifestarNota(
             @PathVariable Long produtorId,
             @PathVariable String chaveAcesso,
-            @RequestParam("tipo") String tipoAcao) {
+            @RequestParam("tipo") String tipoAcao,
+            @RequestParam("certificado") MultipartFile certificado,
+            @RequestParam("senha") String senha) {
 
         var produtorOpt = produtorRepository.findById(produtorId);
         if (produtorOpt.isEmpty()) {
@@ -219,7 +221,8 @@ public class NotaFiscalController {
                 return ResponseEntity.badRequest().body("Ação inválida.");
         }
 
-        String resultado = sefazSyncService.manifestarNotaManualmente(produtorOpt.get(), chaveAcesso, tipoEvento);
+        // Repassando o certificado e a senha recém recebidos para o Service assinar em memória
+        String resultado = sefazSyncService.manifestarNotaManualmente(produtorOpt.get(), chaveAcesso, tipoEvento, certificado, senha);
         return ResponseEntity.ok(resultado);
     }
 
@@ -433,6 +436,23 @@ public class NotaFiscalController {
 
             NotaFiscal nota = sefazXmlService.importarNotaPorChave(produtorId, chave, propriedadeId);
             return ResponseEntity.ok(nota);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    @PostMapping("/sincronizar-sefaz/{produtorId}")
+    public ResponseEntity<?> sincronizarSefaz(
+            @PathVariable Long produtorId,
+            @RequestParam("certificado") MultipartFile certificado,
+            @RequestParam("senha") String senha) {
+        try {
+            var produtorOpt = produtorRepository.findById(produtorId);
+            if (produtorOpt.isEmpty()) return ResponseEntity.badRequest().body("Produtor não encontrado.");
+
+            br.com.agropops.api.dto.ResultadoImportacaoDTO resultado = sefazSyncService.sincronizarComCertificadoEmMemoria(produtorOpt.get(), certificado, senha);
+
+            return ResponseEntity.ok(resultado);
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(e.getMessage());
         }

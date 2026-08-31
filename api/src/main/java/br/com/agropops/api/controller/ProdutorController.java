@@ -57,9 +57,7 @@ public class ProdutorController {
             @RequestParam(value = "telefone", required = false) String telefone,
             @RequestParam(value = "endereco", required = false) String endereco,
             @RequestParam("contadorId") Long contadorId,
-            @RequestParam("propriedades") String propriedadesJson,
-            @RequestParam(value = "senhaCertificado", required = false) String senhaCertificado,
-            @RequestParam(value = "certificado", required = false) MultipartFile certificado) {
+            @RequestParam("propriedades") String propriedadesJson) {
         try {
             Long id = null;
             if (idStr != null && !idStr.isBlank() && !idStr.equals("undefined") && !idStr.equals("null")) {
@@ -79,7 +77,6 @@ public class ProdutorController {
 
             if (id != null) {
                 produtor = produtorRepository.findById(id).orElseThrow(() -> new RuntimeException("Produtor não encontrado"));
-
                 produtor.setNome(nome);
                 produtor.setCpfCnpj(cpfCnpj);
                 produtor.setCnpj(cnpj);
@@ -88,27 +85,21 @@ public class ProdutorController {
                 produtor.setContador(contadorOpt.get());
 
                 List<PropriedadeRural> propriedadesAtuais = produtor.getPropriedades();
-
-                // 1. Identificar quais propriedades o usuário deletou na tela
                 List<PropriedadeRural> propriedadesParaRemover = propriedadesAtuais.stream()
                         .filter(propAtual -> listaNovasPropriedades.stream()
                                 .noneMatch(pNovo -> pNovo.getId() != null && pNovo.getId().equals(propAtual.getId())))
                         .collect(java.util.stream.Collectors.toList());
 
-                // 2. Validação de Integridade (Aviso bloqueador para o Contador)
                 for (PropriedadeRural prop : propriedadesParaRemover) {
                     boolean temNotas = notaRepository.existsByPropriedadeRuralId(prop.getId());
                     boolean temAvulsos = avulsoRepository.existsByPropriedadeRuralId(prop.getId());
-
                     if (temNotas || temAvulsos) {
-                        return ResponseEntity.badRequest().body("Não é possível excluir a propriedade '" + prop.getNome() + "'. Existem notas fiscais ou lançamentos do Livro Caixa vinculados a ela. Por favor, apague as notas atreladas a ela antes de excluir o imóvel.");
+                        return ResponseEntity.badRequest().body("Não é possível excluir a propriedade '" + prop.getNome() + "'. Existem notas fiscais ou lançamentos do Livro Caixa vinculados a ela.");
                     }
                 }
 
-                // 3. Se passou pela validação, remove do banco em segurança
                 propriedadesAtuais.removeAll(propriedadesParaRemover);
 
-                // Atualiza ou adiciona as propriedades
                 for (PropriedadeRural pNovo : listaNovasPropriedades) {
                     if (pNovo.getId() != null) {
                         propriedadesAtuais.stream()
@@ -122,7 +113,6 @@ public class ProdutorController {
                                     pExistente.setPercentualParticipacao(pNovo.getPercentualParticipacao());
                                 });
                     } else {
-                        // CORREÇÃO CRUCIAL: Vincula o produtor na nova propriedade antes de adicionar à lista
                         pNovo.setProdutor(produtor);
                         propriedadesAtuais.add(pNovo);
                     }
@@ -135,24 +125,9 @@ public class ProdutorController {
                 produtor.setTelefone(telefone);
                 produtor.setEndereco(endereco);
                 produtor.setContador(contadorOpt.get());
-
                 for (PropriedadeRural p : listaNovasPropriedades) {
                     p.setProdutor(produtor);
                     produtor.getPropriedades().add(p);
-                }
-            }
-
-            if (certificado != null && !certificado.isEmpty()) {
-                byte[] bytesCertificado = certificado.getBytes();
-                produtor.setCertificadoPfx(bytesCertificado);
-                if (senhaCertificado != null && !senhaCertificado.isEmpty()) {
-                    produtor.setSenhaCertificado(senhaCertificado);
-                    try {
-                        Date validade = certificadoService.extrairValidade(bytesCertificado, senhaCertificado);
-                        produtor.setValidadeCertificado(validade);
-                    } catch (Exception e) {
-                        return ResponseEntity.badRequest().body("Senha do certificado incorreta ou arquivo inválido.");
-                    }
                 }
             }
 
@@ -189,7 +164,7 @@ public class ProdutorController {
             dto.setCpfCnpj(p.getCpfCnpj());
             dto.setCnpj(p.getCnpj());
             dto.setTelefone(p.getTelefone());
-            dto.setValidadeCertificado(p.getValidadeCertificado());
+
 
             List<PropriedadeRuralDTO> propsDTO = p.getPropriedades().stream().map(prop -> {
                 PropriedadeRuralDTO propDto = new PropriedadeRuralDTO();

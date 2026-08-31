@@ -38,19 +38,9 @@ public class Produtor {
     @Column(length = 50)
     private String ultimoNsu;
 
-    @Lob
-    @JsonIgnore
-    private byte[] certificadoPfx;
-
-    @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
-    private String senhaCertificado;
-
     // CAMPO DE CONTROLE DE TEMPO DA SEFAZ
     @Column
     private LocalDateTime ultimaSincronizacaoSefaz;
-
-    @Temporal(TemporalType.DATE)
-    private Date validadeCertificado;
 
     @ManyToOne
     @JoinColumn(name = "contador_id")
