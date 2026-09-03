@@ -36,8 +36,17 @@ public class Contador {
     @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
     private String senha;
 
+    // --- CAMPOS DO MÓDULO DESKTOP  ---
+    @Column(columnDefinition = "boolean default false")
+    private Boolean moduloDesktopAtivo = false;
+
+    @Column
+    private java.time.LocalDate vencimentoDesktop;
+
+    @Column(length = 500)
+    private String tokenDesktop;
+
     @JsonIgnore
     @OneToMany(mappedBy = "contador", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<Produtor> produtores = new ArrayList<>();
-
 }

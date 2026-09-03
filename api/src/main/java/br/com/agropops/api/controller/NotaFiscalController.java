@@ -457,4 +457,37 @@ public class NotaFiscalController {
             return ResponseEntity.badRequest().body(e.getMessage());
         }
     }
+
+    // ROTA EXCLUSIVA PARA O DESKTOP COM TRAVA
+
+    @PostMapping("/importacao-desktop/{produtorId}")
+    public ResponseEntity<?> importarDoRoboDesktop(
+            @PathVariable Long produtorId,
+            @RequestParam("arquivos") List<MultipartFile> arquivos) {
+
+        // 1. Identifica quem é o contador dono deste crachá
+        Object principal = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+
+        if (principal instanceof br.com.agropops.api.model.Contador) {
+            br.com.agropops.api.model.Contador contadorLogado = (br.com.agropops.api.model.Contador) principal;
+
+            // 2.  Verifica se a licença expirou ou foi revogada pelo Admin
+            boolean ativo = contadorLogado.getModuloDesktopAtivo() != null && contadorLogado.getModuloDesktopAtivo();
+            boolean expirou = contadorLogado.getVencimentoDesktop() != null && java.time.LocalDate.now().isAfter(contadorLogado.getVencimentoDesktop());
+
+            if (!ativo || expirou) {
+                return ResponseEntity.status(org.springframework.http.HttpStatus.FORBIDDEN)
+                        .body("Acesso Bloqueado: A assinatura do Módulo Desktop expirou ou está inativa. Regularize pelo Painel Web.");
+            }
+        }
+
+        // 3. Se a licença estiver em dia, repassa os XMLs para a mesma inteligência tributária do painel web
+        // Forçar divergentes = false, Ignorar parcelas = false
+        try {
+            br.com.agropops.api.dto.ResultadoImportacaoDTO relatorio = sefazXmlService.importarNotas(produtorId, null, arquivos, false, false);
+            return ResponseEntity.ok(relatorio);
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().body("Erro ao processar lote do robô: " + e.getMessage());
+        }
+    }
 }

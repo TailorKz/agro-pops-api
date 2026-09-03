@@ -265,4 +265,34 @@ public class AdminController {
             return map;
         }).collect(java.util.stream.Collectors.toList()));
     }
+
+    // GESTÃO DO MÓDULO DESKTOP
+
+    @PutMapping("/contadores/{id}/desktop")
+    public ResponseEntity<?> configurarModuloDesktop(@PathVariable Long id, @RequestBody Map<String, Object> payload) {
+        return contadorRepository.findById(id).map(contador -> {
+            String acao = (String) payload.get("acao"); // "GERAR" ou "REVOGAR"
+
+            if ("GERAR".equals(acao)) {
+                // Pega a quantidade de meses da assinatura (Padrão 1 mês)
+                int meses = (int) payload.getOrDefault("meses", 1);
+
+                contador.setModuloDesktopAtivo(true);
+                contador.setVencimentoDesktop(java.time.LocalDate.now().plusMonths(meses));
+
+                // Só gera um novo crachá se ele ainda não tiver um (para não deslogar o robô numa mera renovação)
+                if (contador.getTokenDesktop() == null || contador.getTokenDesktop().isEmpty()) {
+                    contador.setTokenDesktop(tokenService.gerarTokenDesktop(contador));
+                }
+            }
+            else if ("REVOGAR".equals(acao)) {
+                contador.setModuloDesktopAtivo(false);
+                contador.setVencimentoDesktop(null);
+                contador.setTokenDesktop(null); // Destrói o crachá
+            }
+
+            contadorRepository.save(contador);
+            return ResponseEntity.ok(contador);
+        }).orElse(ResponseEntity.notFound().build());
+    }
 }

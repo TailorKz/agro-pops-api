@@ -29,6 +29,12 @@ public class TokenService {
         return criarToken(contador.getEmail(), "id", contador.getId(), "CONTADOR", 1, ChronoUnit.DAYS);
     }
 
+    public String gerarTokenDesktop(Contador contador) {
+        // Token de longa duração para o Robô (.exe)
+        // O bloqueio de pagamento não será pela expiração deste token
+        return criarToken(contador.getEmail(), "origem", "DESKTOP", "CONTADOR", 365, ChronoUnit.DAYS);
+    }
+
     public String gerarToken(Admin admin) {
         return criarToken(admin.getEmail(), "role", "ADMIN", "ADMIN", 1, ChronoUnit.DAYS);
     }
