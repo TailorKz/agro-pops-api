@@ -13,6 +13,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.core.type.TypeReference;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
@@ -181,6 +183,19 @@ public class ProdutorController {
         }).collect(java.util.stream.Collectors.toList());
 
         return ResponseEntity.ok(listaLeve);
+    }
+
+    // Endpoint exclusivo do App Desktop (Robô).
+    // O crachá desktop (origem=DESKTOP) NÃO carrega a claim "id" do contador no payload,
+    // então o backend resolve o dono do crachá direto do SecurityContext (autenticado pelo subject/email).
+    @GetMapping("/listar")
+    @Transactional(readOnly = true)
+    public ResponseEntity<?> listarPorCracha() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.getPrincipal() instanceof Contador contador) {
+            return listarPorContador(contador.getId());
+        }
+        return ResponseEntity.status(401).body("Acesso negado: o crachá não identifica um contador válido.");
     }
 
     @PostMapping("/login-mobile")
